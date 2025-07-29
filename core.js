@@ -1,5 +1,5 @@
 // =======================================================================
-// CORE.JS - Core Application Functions
+// CORE.JS - Core Application Functions (FIXED VERSION)
 // Character-based flow engine, document processing, page management
 // =======================================================================
 
@@ -17,15 +17,36 @@ var currentCursorPage = null;
 // Initialize when page loads
 window.onload = function() {
     console.log('Book Layout Generator v2.0 loaded successfully');
-    setupEventListeners();
-    initializeProjectManagement();
-    checkForRecoveryData();
+    
+    // Initialize in sequence to avoid timing issues
+    setTimeout(function() {
+        setupEventListeners();
+        if (typeof initializeProjectManagement === 'function') {
+            initializeProjectManagement();
+        }
+        if (typeof checkForRecoveryData === 'function') {
+            checkForRecoveryData();
+        }
+    }, 100);
 };
 
 // Event listeners setup
 function setupEventListeners() {
+    console.log('Setting up event listeners...');
+    
     var uploadSection = document.getElementById('uploadSection');
     var fileInput = document.getElementById('fileInput');
+
+    // Check if elements exist before adding listeners
+    if (!uploadSection) {
+        console.error('Upload section not found!');
+        return;
+    }
+    
+    if (!fileInput) {
+        console.error('File input not found!');
+        return;
+    }
 
     uploadSection.addEventListener('dragover', function(e) {
         e.preventDefault();
@@ -51,30 +72,52 @@ function setupEventListeners() {
         }
     });
 
-    // Settings change listeners
-    document.getElementById('charactersPerPage').addEventListener('change', function(e) {
-        targetCharactersPerPage = parseInt(e.target.value);
-        markAsChanged();
-        if (processedPages.length > 0) {
-            scheduleReflow();
-        }
-    });
+    // Settings change listeners - with null checks
+    var charactersPerPageEl = document.getElementById('charactersPerPage');
+    if (charactersPerPageEl) {
+        charactersPerPageEl.addEventListener('change', function(e) {
+            targetCharactersPerPage = parseInt(e.target.value) || 1800;
+            if (typeof markAsChanged === 'function') {
+                markAsChanged();
+            }
+            if (processedPages.length > 0) {
+                scheduleReflow();
+            }
+        });
+    }
 
-    document.getElementById('bookType').addEventListener('change', function() {
-        markAsChanged();
-    });
+    var bookTypeEl = document.getElementById('bookType');
+    if (bookTypeEl) {
+        bookTypeEl.addEventListener('change', function() {
+            if (typeof markAsChanged === 'function') {
+                markAsChanged();
+            }
+        });
+    }
 
-    document.getElementById('bookSize').addEventListener('change', function(e) {
-        currentBookSize = e.target.value;
-        markAsChanged();
-    });
+    var bookSizeEl = document.getElementById('bookSize');
+    if (bookSizeEl) {
+        bookSizeEl.addEventListener('change', function(e) {
+            currentBookSize = e.target.value;
+            if (typeof markAsChanged === 'function') {
+                markAsChanged();
+            }
+        });
+    }
 
-    document.getElementById('illustrationFreq').addEventListener('change', function() {
-        markAsChanged();
-        if (processedPages.length > 0) {
-            scheduleReflow();
-        }
-    });
+    var illustrationFreqEl = document.getElementById('illustrationFreq');
+    if (illustrationFreqEl) {
+        illustrationFreqEl.addEventListener('change', function() {
+            if (typeof markAsChanged === 'function') {
+                markAsChanged();
+            }
+            if (processedPages.length > 0) {
+                scheduleReflow();
+            }
+        });
+    }
+    
+    console.log('Event listeners set up successfully');
 }
 
 // =======================================================================
@@ -101,6 +144,8 @@ function addDebugConsole() {
 }
 
 function logToDebug(message, type) {
+    console.log('[DEBUG] ' + message); // Also log to browser console
+    
     var debugLog = document.getElementById('debugLog');
     if (debugLog) {
         var colors = {
@@ -134,7 +179,10 @@ function handleFile(file) {
     }
 
     var fileName = document.getElementById('fileName');
-    fileName.innerHTML = 'Selected: ' + file.name;
+    if (fileName) {
+        fileName.innerHTML = 'Selected: ' + file.name;
+    }
+    
     showProgress(true);
     updateProgress(20);
     logToDebug('File validation passed, starting FileReader...', 'success');
@@ -152,6 +200,11 @@ function handleFile(file) {
         updateProgress(50);
         
         try {
+            // Check if mammoth is available
+            if (typeof mammoth === 'undefined') {
+                throw new Error('Mammoth library not loaded. Please refresh the page.');
+            }
+            
             var options = {
                 styleMap: [
                     "p[style-name='Heading 1'] => h1:fresh",
@@ -182,7 +235,11 @@ function handleFile(file) {
                 setTimeout(function() { showProgress(false); }, 1000);
                 
                 showFormattingPreview(documentStructure);
-                markAsChanged(); // Mark as changed since we loaded new content
+                
+                // Mark as changed since we loaded new content
+                if (typeof markAsChanged === 'function') {
+                    markAsChanged();
+                }
             })
             .catch(function(err) {
                 logToDebug('Mammoth processing error: ' + err.message, 'error');
@@ -249,8 +306,8 @@ function showFormattingPreview(structure) {
         var headings = structure.filter(function(item) { return item.isHeading; });
         logToDebug('Found headings: ' + headings.length, 'info');
         
-        if (headings.length > 0) {
-            var fileName = document.getElementById('fileName');
+        var fileName = document.getElementById('fileName');
+        if (fileName && headings.length > 0) {
             var previewDiv = document.createElement('div');
             previewDiv.style.cssText = 'background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #28a745;';
             
@@ -261,7 +318,7 @@ function showFormattingPreview(structure) {
             fileName.appendChild(previewDiv);
             logToDebug('Formatting preview displayed', 'success');
         } else {
-            logToDebug('No headings found for preview', 'info');
+            logToDebug('No headings found for preview or fileName element missing', 'info');
         }
     } catch (err) {
         logToDebug('Error showing formatting preview: ' + err.message, 'error');
@@ -283,10 +340,11 @@ function processDocument() {
     showProgress(true);
     updateProgress(10);
 
-    var bookType = document.getElementById('bookType').value;
-    var bookSize = document.getElementById('bookSize').value;
-    var charactersPerPage = parseInt(document.getElementById('charactersPerPage').value);
-    var illustrationFreq = document.getElementById('illustrationFreq').value;
+    // Get settings with safe defaults
+    var bookType = getElementValue('bookType', 'text');
+    var bookSize = getElementValue('bookSize', 'standard');
+    var charactersPerPage = parseInt(getElementValue('charactersPerPage', '1800'));
+    var illustrationFreq = getElementValue('illustrationFreq', 'none');
 
     targetCharactersPerPage = charactersPerPage;
     currentBookSize = bookSize;
@@ -294,19 +352,46 @@ function processDocument() {
     logToDebug('Processing with settings: ' + bookType + ', ' + bookSize + ', ' + charactersPerPage + ' chars/page', 'info');
 
     updateProgress(30);
-    processedPages = createCharacterBasedLayout(documentStructure, bookType, charactersPerPage, illustrationFreq);
     
-    updateProgress(70);
-    renderFormattedPages(processedPages);
-    
-    updateProgress(100);
-    document.getElementById('resultsSection').style.display = 'block';
-    document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
-    
-    showStatus('Successfully generated ' + processedPages.length + ' pages with character-based flow!', 'success');
-    setTimeout(function() { showProgress(false); }, 1000);
-    
-    markAsChanged(); // Mark as changed after processing
+    try {
+        processedPages = createCharacterBasedLayout(documentStructure, bookType, charactersPerPage, illustrationFreq);
+        
+        updateProgress(70);
+        
+        // Ensure renderFormattedPages function exists
+        if (typeof renderFormattedPages === 'function') {
+            renderFormattedPages(processedPages);
+        } else {
+            logToDebug('renderFormattedPages function not found!', 'error');
+            showStatus('Error: Page rendering function not available', 'error');
+            showProgress(false);
+            return;
+        }
+        
+        updateProgress(100);
+        
+        var resultsSection = document.getElementById('resultsSection');
+        if (resultsSection) {
+            resultsSection.style.display = 'block';
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // Update page count display
+        updatePageCountDisplay();
+        
+        showStatus('Successfully generated ' + processedPages.length + ' pages with character-based flow!', 'success');
+        setTimeout(function() { showProgress(false); }, 1000);
+        
+        // Mark as changed after processing
+        if (typeof markAsChanged === 'function') {
+            markAsChanged();
+        }
+        
+    } catch (err) {
+        logToDebug('Error in processDocument: ' + err.message, 'error');
+        showStatus('Error processing document: ' + err.message, 'error');
+        showProgress(false);
+    }
 }
 
 function createCharacterBasedLayout(structure, bookType, charactersPerPage, illustrationFreq) {
@@ -432,7 +517,7 @@ function performReflow() {
         if (testText.length > availableChars && currentText.length > 0) {
             // Create page with current content
             var hasIllustration = shouldHaveIllustration(
-                document.getElementById('illustrationFreq').value, 
+                getElementValue('illustrationFreq', 'none'), 
                 pageNumber
             );
             newPages.push(createCharacterPage(pageNumber, currentText.trim(), hasIllustration));
@@ -447,7 +532,7 @@ function performReflow() {
     // Add final page if there's remaining content
     if (currentText.trim().length > 0) {
         var hasIllustration = shouldHaveIllustration(
-            document.getElementById('illustrationFreq').value, 
+            getElementValue('illustrationFreq', 'none'), 
             pageNumber
         );
         newPages.push(createCharacterPage(pageNumber, currentText.trim(), hasIllustration));
@@ -459,10 +544,17 @@ function performReflow() {
     logToDebug('Reflow complete: ' + newPages.length + ' pages', 'flow');
     
     // Re-render pages
-    renderFormattedPages(processedPages);
+    if (typeof renderFormattedPages === 'function') {
+        renderFormattedPages(processedPages);
+    }
+    
+    // Update page count
+    updatePageCountDisplay();
     
     // Mark as changed
-    markAsChanged();
+    if (typeof markAsChanged === 'function') {
+        markAsChanged();
+    }
     
     // Hide flow indicators
     setTimeout(function() {
@@ -476,7 +568,7 @@ function performReflow() {
 
 function getAvailableCharacters(pageNumber) {
     var baseChars = targetCharactersPerPage;
-    var illustrationFreq = document.getElementById('illustrationFreq').value;
+    var illustrationFreq = getElementValue('illustrationFreq', 'none');
     var hasIllustration = shouldHaveIllustration(illustrationFreq, pageNumber);
     
     // Reduce available characters based on image placeholders
@@ -491,26 +583,48 @@ function getAvailableCharacters(pageNumber) {
 // UTILITY FUNCTIONS
 // =======================================================================
 
+function getElementValue(id, defaultValue) {
+    var element = document.getElementById(id);
+    return element ? element.value : defaultValue;
+}
+
 function showProgress(show) {
-    document.getElementById('progressBar').style.display = show ? 'block' : 'none';
-    if (!show) {
-        updateProgress(0);
+    var progressBar = document.getElementById('progressBar');
+    if (progressBar) {
+        progressBar.style.display = show ? 'block' : 'none';
+        if (!show) {
+            updateProgress(0);
+        }
     }
 }
 
 function updateProgress(percent) {
-    document.getElementById('progressFill').style.width = percent + '%';
+    var progressFill = document.getElementById('progressFill');
+    if (progressFill) {
+        progressFill.style.width = percent + '%';
+    }
 }
 
 function showStatus(message, type) {
-    var statusDiv = document.getElementById('statusMessage');
-    statusDiv.textContent = message;
-    statusDiv.className = 'status-message status-' + type;
-    statusDiv.style.display = 'block';
+    console.log('[STATUS] ' + type.toUpperCase() + ': ' + message);
     
-    setTimeout(function() {
-        statusDiv.style.display = 'none';
-    }, 5000);
+    var statusDiv = document.getElementById('statusMessage');
+    if (statusDiv) {
+        statusDiv.textContent = message;
+        statusDiv.className = 'status-message status-' + type;
+        statusDiv.style.display = 'block';
+        
+        setTimeout(function() {
+            statusDiv.style.display = 'none';
+        }, 5000);
+    }
+}
+
+function updatePageCountDisplay() {
+    var pageCountDisplay = document.getElementById('pageCountDisplay');
+    if (pageCountDisplay && processedPages) {
+        pageCountDisplay.textContent = processedPages.length + ' pages';
+    }
 }
 
 function getCharacterCountClass(charCount) {
@@ -526,3 +640,28 @@ function getCharacterCountClass(charCount) {
         return 'overflow';
     }
 }
+
+// Add error handling for the entire script
+window.addEventListener('error', function(e) {
+    console.error('Global error caught:', e.error);
+    logToDebug('Global error: ' + e.message + ' at ' + e.filename + ':' + e.lineno, 'error');
+});
+
+// Check if all required elements exist on page load
+window.addEventListener('DOMContentLoaded', function() {
+    var requiredElements = ['uploadSection', 'fileInput', 'bookType', 'bookSize', 'illustrationFreq'];
+    var missingElements = [];
+    
+    requiredElements.forEach(function(id) {
+        if (!document.getElementById(id)) {
+            missingElements.push(id);
+        }
+    });
+    
+    if (missingElements.length > 0) {
+        console.error('Missing required elements:', missingElements);
+        logToDebug('Missing elements: ' + missingElements.join(', '), 'error');
+    } else {
+        console.log('All required elements found');
+    }
+});
