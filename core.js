@@ -1,6 +1,6 @@
 // =======================================================================
-// CORE.JS - Core Application Functions (FIXED VERSION)
-// Character-based flow engine, document processing, page management
+// CORE.JS - Revised Semi-Independence Flow System
+// True page dimensions with smart paragraph-aware overflow
 // =======================================================================
 
 // Global variables
@@ -8,17 +8,31 @@ var documentText = '';
 var documentHTML = '';
 var documentStructure = [];
 var processedPages = [];
-var targetCharactersPerPage = 1800;
+var targetCharactersPerPage = 1800; // Still used for initial split, then margin-based
 var isReflowing = false;
 var currentBookSize = 'standard';
 var reflowTimeout = null;
 var currentCursorPage = null;
+var editHistory = []; // For undo functionality
+var maxHistorySteps = 50;
+
+// Page dimensions and margins (CSS-based measurements)
+var pageDimensions = {
+    standard: { width: 5.5, height: 8.5 }, // inches
+    illustration: { width: 8, height: 8 }
+};
+
+var pageMargins = {
+    top: 0.75,    // inches
+    bottom: 0.75,
+    inside: 0.5,
+    outside: 0.5
+};
 
 // Initialize when page loads
 window.onload = function() {
-    console.log('Book Layout Generator v2.0 loaded successfully');
+    console.log('Book Layout Generator v3.0 - Semi-Independence Flow System loaded');
     
-    // Initialize in sequence to avoid timing issues
     setTimeout(function() {
         setupEventListeners();
         if (typeof initializeProjectManagement === 'function') {
@@ -27,27 +41,85 @@ window.onload = function() {
         if (typeof checkForRecoveryData === 'function') {
             checkForRecoveryData();
         }
+        setupUndoSystem();
     }, 100);
 };
 
-// Event listeners setup
+// =======================================================================
+// UNDO/REDO SYSTEM
+// =======================================================================
+
+function setupUndoSystem() {
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            undoLastChange();
+        }
+        if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'Z')) {
+            e.preventDefault();
+            redoLastChange();
+        }
+    });
+    
+    logToDebug('Undo system initialized (Ctrl+Z / Ctrl+Y)', 'success');
+}
+
+function saveStateToHistory() {
+    // Deep copy current state
+    var currentState = {
+        pages: JSON.parse(JSON.stringify(processedPages)),
+        timestamp: Date.now()
+    };
+    
+    editHistory.push(currentState);
+    
+    // Limit history size
+    if (editHistory.length > maxHistorySteps) {
+        editHistory.shift();
+    }
+    
+    logToDebug('State saved to history (' + editHistory.length + ' steps)', 'info');
+}
+
+function undoLastChange() {
+    if (editHistory.length === 0) {
+        showStatus('Nothing to undo', 'warning');
+        return;
+    }
+    
+    var previousState = editHistory.pop();
+    processedPages = previousState.pages;
+    
+    // Re-render with previous state
+    renderFormattedPages(processedPages);
+    
+    showStatus('Undo successful', 'success');
+    logToDebug('Undo applied - restored to ' + new Date(previousState.timestamp).toLocaleTimeString(), 'success');
+}
+
+function redoLastChange() {
+    // For now, we'll implement a simple version
+    // Full redo would require separate redo stack
+    showStatus('Redo not implemented yet - use manual editing', 'info');
+}
+
+// =======================================================================
+// EVENT LISTENERS SETUP
+// =======================================================================
+
 function setupEventListeners() {
     console.log('Setting up event listeners...');
     
     var uploadSection = document.getElementById('uploadSection');
     var fileInput = document.getElementById('fileInput');
 
-    // Check if elements exist before adding listeners
-    if (!uploadSection) {
-        console.error('Upload section not found!');
-        return;
-    }
-    
-    if (!fileInput) {
-        console.error('File input not found!');
+    if (!uploadSection || !fileInput) {
+        console.error('Required elements not found!');
         return;
     }
 
+    // File upload listeners
     uploadSection.addEventListener('dragover', function(e) {
         e.preventDefault();
         uploadSection.classList.add('dragover');
@@ -72,96 +144,34 @@ function setupEventListeners() {
         }
     });
 
-    // Settings change listeners - with null checks
-    var charactersPerPageEl = document.getElementById('charactersPerPage');
-    if (charactersPerPageEl) {
-        charactersPerPageEl.addEventListener('change', function(e) {
-            targetCharactersPerPage = parseInt(e.target.value) || 1800;
-            if (typeof markAsChanged === 'function') {
-                markAsChanged();
-            }
-            if (processedPages.length > 0) {
-                scheduleReflow();
-            }
-        });
-    }
+    // Settings change listeners
+    setupSettingsListeners();
+    console.log('Event listeners set up successfully');
+}
 
-    var bookTypeEl = document.getElementById('bookType');
-    if (bookTypeEl) {
-        bookTypeEl.addEventListener('change', function() {
-            if (typeof markAsChanged === 'function') {
-                markAsChanged();
-            }
-        });
-    }
-
+function setupSettingsListeners() {
     var bookSizeEl = document.getElementById('bookSize');
     if (bookSizeEl) {
         bookSizeEl.addEventListener('change', function(e) {
             currentBookSize = e.target.value;
+            updatePageDimensions();
             if (typeof markAsChanged === 'function') {
                 markAsChanged();
             }
         });
     }
 
-    var illustrationFreqEl = document.getElementById('illustrationFreq');
-    if (illustrationFreqEl) {
-        illustrationFreqEl.addEventListener('change', function() {
-            if (typeof markAsChanged === 'function') {
-                markAsChanged();
-            }
-            if (processedPages.length > 0) {
-                scheduleReflow();
-            }
-        });
-    }
-    
-    console.log('Event listeners set up successfully');
-}
-
-// =======================================================================
-// DEBUG CONSOLE FUNCTIONS
-// =======================================================================
-
-function showDebugConsole() {
-    var debugConsole = document.getElementById('debugConsole');
-    if (!debugConsole) {
-        addDebugConsole();
-    }
-    document.getElementById('debugConsole').style.display = 'block';
-    logToDebug('Debug console opened - Character-based flow system active!', 'success');
-}
-
-function addDebugConsole() {
-    var debugDiv = document.createElement('div');
-    debugDiv.id = 'debugConsole';
-    debugDiv.style.cssText = 'position: fixed; bottom: 20px; right: 20px; width: 450px; max-height: 400px; background: #1a1a1a; color: #00ff00; font-family: monospace; font-size: 12px; padding: 15px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); overflow-y: auto; z-index: 1000; display: none; border: 2px solid #333;';
-    
-    debugDiv.innerHTML = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 8px;"><strong style="color: #ffffff; font-size: 14px;">🐛 Debug Console - Character Flow v2.0</strong><button onclick="document.getElementById(\'debugConsole\').style.display=\'none\'" style="background: #ff4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">✕ Close</button></div><div id="debugLog" style="max-height: 320px; overflow-y: auto;"></div><div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; font-size: 10px; color: #888;">💡 Real-time character flow, auto-save, and project management</div>';
-    
-    document.body.appendChild(debugDiv);
-}
-
-function logToDebug(message, type) {
-    console.log('[DEBUG] ' + message); // Also log to browser console
-    
-    var debugLog = document.getElementById('debugLog');
-    if (debugLog) {
-        var colors = {
-            info: '#00ff00',
-            warn: '#ffaa00', 
-            error: '#ff4444',
-            success: '#00aa00',
-            flow: '#00aaff',
-            save: '#ff00ff'
-        };
-        
-        var timestamp = new Date().toLocaleTimeString();
-        var color = colors[type] || '#00ff00';
-        debugLog.innerHTML += '<div style="color: ' + color + '; margin-bottom: 3px;">[' + timestamp + '] ' + message + '</div>';
-        debugLog.scrollTop = debugLog.scrollHeight;
-    }
+    // Other settings listeners
+    ['bookType', 'illustrationFreq'].forEach(function(id) {
+        var element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('change', function() {
+                if (typeof markAsChanged === 'function') {
+                    markAsChanged();
+                }
+            });
+        }
+    });
 }
 
 // =======================================================================
@@ -170,10 +180,8 @@ function logToDebug(message, type) {
 
 function handleFile(file) {
     logToDebug('Starting file upload process...', 'info');
-    logToDebug('File: ' + file.name + ' (' + file.size + ' bytes)', 'info');
-
+    
     if (!file.name.match(/\.(docx|doc)$/i)) {
-        logToDebug('Invalid file type: ' + file.name, 'error');
         showStatus('Please select a Word document (.docx or .doc)', 'error');
         return;
     }
@@ -185,110 +193,90 @@ function handleFile(file) {
     
     showProgress(true);
     updateProgress(20);
-    logToDebug('File validation passed, starting FileReader...', 'success');
 
     var reader = new FileReader();
     
-    reader.onerror = function(e) {
-        logToDebug('FileReader error: ' + e, 'error');
+    reader.onerror = function() {
         showStatus('Error reading file. Please try again.', 'error');
         showProgress(false);
     };
 
     reader.onload = function(e) {
-        logToDebug('FileReader completed, file size: ' + e.target.result.byteLength + ' bytes', 'info');
         updateProgress(50);
         
         try {
-            // Check if mammoth is available
             if (typeof mammoth === 'undefined') {
-                throw new Error('Mammoth library not loaded. Please refresh the page.');
+                throw new Error('Document processing library not loaded. Please refresh.');
             }
             
             var options = {
                 styleMap: [
                     "p[style-name='Heading 1'] => h1:fresh",
-                    "p[style-name='Heading 2'] => h2:fresh",
+                    "p[style-name='Heading 2'] => h2:fresh", 
                     "p[style-name='Heading 3'] => h3:fresh"
                 ]
             };
 
-            logToDebug('Starting Mammoth processing...', 'info');
-            
             Promise.all([
                 mammoth.convertToHtml({arrayBuffer: e.target.result}, options),
                 mammoth.extractRawText({arrayBuffer: e.target.result})
             ]).then(function(results) {
-                logToDebug('Mammoth processing successful', 'success');
-                logToDebug('HTML result length: ' + results[0].value.length, 'info');
-                logToDebug('Text result length: ' + results[1].value.length, 'info');
-
                 documentHTML = results[0].value;
                 documentText = results[1].value;
                 
-                logToDebug('Parsing document structure...', 'info');
                 documentStructure = parseDocumentStructure(documentHTML);
-                logToDebug('Document structure: ' + documentStructure.length + ' elements found', 'success');
                 
                 updateProgress(100);
-                showStatus('Document loaded successfully with formatting!', 'success');
+                showStatus('Document loaded successfully!', 'success');
                 setTimeout(function() { showProgress(false); }, 1000);
                 
                 showFormattingPreview(documentStructure);
                 
-                // Mark as changed since we loaded new content
                 if (typeof markAsChanged === 'function') {
                     markAsChanged();
                 }
             })
             .catch(function(err) {
-                logToDebug('Mammoth processing error: ' + err.message, 'error');
                 showStatus('Error processing document: ' + err.message, 'error');
                 showProgress(false);
             });
             
         } catch (err) {
-            logToDebug('Unexpected error in handleFile: ' + err.message, 'error');
             showStatus('Unexpected error: ' + err.message, 'error');
             showProgress(false);
         }
     };
     
-    logToDebug('Starting FileReader.readAsArrayBuffer...', 'info');
     reader.readAsArrayBuffer(file);
 }
 
 function parseDocumentStructure(html) {
-    logToDebug('Parsing document structure from HTML...', 'info');
-    
     try {
         var parser = new DOMParser();
         var doc = parser.parseFromString(html, 'text/html');
         var elements = doc.body.children;
         var structure = [];
         
-        logToDebug('Found ' + elements.length + ' elements in document body', 'info');
-        
         for (var i = 0; i < elements.length; i++) {
             var element = elements[i];
-            var item = {
-                tag: element.tagName.toLowerCase(),
-                content: element.textContent.trim(),
-                html: element.outerHTML,
-                isHeading: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].indexOf(element.tagName.toLowerCase()) !== -1,
-                isEmpty: element.textContent.trim() === ''
-            };
+            var content = element.textContent.trim();
             
-            if (!item.isEmpty) {
-                structure.push(item);
+            if (content) {
+                structure.push({
+                    tag: element.tagName.toLowerCase(),
+                    content: content,
+                    html: element.outerHTML,
+                    isHeading: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(element.tagName.toLowerCase()),
+                    isEmpty: false
+                });
             }
         }
         
-        logToDebug('Document structure parsed: ' + structure.length + ' non-empty elements', 'success');
+        logToDebug('Document structure parsed: ' + structure.length + ' elements', 'success');
         return structure;
         
     } catch (err) {
-        logToDebug('Error parsing document structure: ' + err.message, 'error');
+        logToDebug('Error parsing document: ' + err.message, 'error');
         return [{
             tag: 'p',
             content: html.replace(/<[^>]*>/g, ''),
@@ -300,28 +288,24 @@ function parseDocumentStructure(html) {
 }
 
 function showFormattingPreview(structure) {
-    logToDebug('Showing formatting preview...', 'info');
+    var headings = structure.filter(function(item) { return item.isHeading; });
+    var fileName = document.getElementById('fileName');
     
-    try {
-        var headings = structure.filter(function(item) { return item.isHeading; });
-        logToDebug('Found headings: ' + headings.length, 'info');
+    if (fileName && headings.length > 0) {
+        var previewDiv = document.createElement('div');
+        previewDiv.style.cssText = 'background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #28a745;';
         
-        var fileName = document.getElementById('fileName');
-        if (fileName && headings.length > 0) {
-            var previewDiv = document.createElement('div');
-            previewDiv.style.cssText = 'background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #28a745;';
-            
-            var headingsList = headings.slice(0, 5).map(function(h) { return '• ' + h.content; }).join('<br>');
-            var moreText = headings.length > 5 ? '<br>• ... and more' : '';
-            
-            previewDiv.innerHTML = '<strong>📋 Detected Document Structure:</strong><br><small style="color: #666;">Found ' + headings.length + ' headings - Character-based flow system ready!</small><br>' + headingsList + moreText;
-            fileName.appendChild(previewDiv);
-            logToDebug('Formatting preview displayed', 'success');
-        } else {
-            logToDebug('No headings found for preview or fileName element missing', 'info');
-        }
-    } catch (err) {
-        logToDebug('Error showing formatting preview: ' + err.message, 'error');
+        var headingsList = headings.slice(0, 5).map(function(h) { 
+            return '• ' + h.content; 
+        }).join('<br>');
+        
+        var moreText = headings.length > 5 ? '<br>• ... and more' : '';
+        
+        previewDiv.innerHTML = '<strong>📋 Document Structure:</strong><br>' +
+            '<small style="color: #666;">Found ' + headings.length + ' headings - Semi-independence flow ready!</small><br>' + 
+            headingsList + moreText;
+        
+        fileName.appendChild(previewDiv);
     }
 }
 
@@ -330,42 +314,40 @@ function showFormattingPreview(structure) {
 // =======================================================================
 
 function processDocument() {
-    logToDebug('Starting document processing with character-based flow...', 'info');
+    logToDebug('Starting document processing with semi-independence flow...', 'info');
     
     if (!documentHTML && !documentText) {
         showStatus('Please upload a document first', 'error');
         return;
     }
 
+    // Save initial state
+    saveStateToHistory();
+
     showProgress(true);
     updateProgress(10);
 
-    // Get settings with safe defaults
     var bookType = getElementValue('bookType', 'text');
     var bookSize = getElementValue('bookSize', 'standard');
-    var charactersPerPage = parseInt(getElementValue('charactersPerPage', '1800'));
     var illustrationFreq = getElementValue('illustrationFreq', 'none');
 
-    targetCharactersPerPage = charactersPerPage;
     currentBookSize = bookSize;
+    updatePageDimensions();
 
-    logToDebug('Processing with settings: ' + bookType + ', ' + bookSize + ', ' + charactersPerPage + ' chars/page', 'info');
+    logToDebug('Processing with settings: ' + bookType + ', ' + bookSize, 'info');
 
     updateProgress(30);
     
     try {
-        processedPages = createCharacterBasedLayout(documentStructure, bookType, charactersPerPage, illustrationFreq);
+        // Use smart paragraph-aware layout instead of character-based
+        processedPages = createSmartParagraphLayout(documentStructure, bookType, illustrationFreq);
         
         updateProgress(70);
         
-        // Ensure renderFormattedPages function exists
         if (typeof renderFormattedPages === 'function') {
             renderFormattedPages(processedPages);
         } else {
-            logToDebug('renderFormattedPages function not found!', 'error');
-            showStatus('Error: Page rendering function not available', 'error');
-            showProgress(false);
-            return;
+            throw new Error('Page rendering function not available');
         }
         
         updateProgress(100);
@@ -376,13 +358,10 @@ function processDocument() {
             resultsSection.scrollIntoView({ behavior: 'smooth' });
         }
         
-        // Update page count display
         updatePageCountDisplay();
-        
-        showStatus('Successfully generated ' + processedPages.length + ' pages with character-based flow!', 'success');
+        showStatus('Successfully generated ' + processedPages.length + ' pages with smart flow!', 'success');
         setTimeout(function() { showProgress(false); }, 1000);
         
-        // Mark as changed after processing
         if (typeof markAsChanged === 'function') {
             markAsChanged();
         }
@@ -394,68 +373,60 @@ function processDocument() {
     }
 }
 
-function createCharacterBasedLayout(structure, bookType, charactersPerPage, illustrationFreq) {
+function createSmartParagraphLayout(structure, bookType, illustrationFreq) {
     var pages = [];
     var pageNumber = 1;
+    var currentPageContent = [];
+    var currentPageHeight = 0;
+    
+    // Calculate available height based on actual page dimensions
+    var availableHeight = calculateAvailableTextHeight();
+    
+    logToDebug('Creating smart paragraph layout with ' + availableHeight + 'px available height', 'info');
 
-    logToDebug('Creating character-based layout with ' + charactersPerPage + ' characters per page target', 'info');
-
-    // Combine all content into a single text string
-    var allContent = structure.map(function(item) {
-        return item.content;
-    }).join('\n\n');
-
-    logToDebug('Total content: ' + allContent.length + ' characters', 'info');
-
-    // Split content into pages based on character count
-    var words = allContent.split(/\s+/);
-    var currentText = '';
-
-    for (var i = 0; i < words.length; i++) {
-        var word = words[i];
-        var testText = currentText + (currentText ? ' ' : '') + word;
+    for (var i = 0; i < structure.length; i++) {
+        var item = structure[i];
         
-        if (testText.length > charactersPerPage && currentText.length > 0) {
+        // Measure actual height this paragraph would take
+        var paragraphHeight = measureParagraphHeight(item.content);
+        
+        // Check if we need a new page
+        if (currentPageHeight + paragraphHeight > availableHeight && currentPageContent.length > 0) {
             // Create page with current content
-            var needsIllustration = shouldHaveIllustration(illustrationFreq, pageNumber);
-            pages.push(createCharacterPage(pageNumber, currentText.trim(), needsIllustration));
-            logToDebug('Created page ' + pageNumber + ' with ' + currentText.length + ' characters', 'success');
-            
-            currentText = word;
+            pages.push(createSmartPage(pageNumber, currentPageContent, illustrationFreq));
+            currentPageContent = [];
+            currentPageHeight = 0;
             pageNumber++;
-        } else {
-            currentText = testText;
         }
+        
+        // Add paragraph to current page
+        currentPageContent.push(item);
+        currentPageHeight += paragraphHeight;
     }
-
+    
     // Add final page if there's remaining content
-    if (currentText.trim().length > 0) {
-        var needsIllustration = shouldHaveIllustration(illustrationFreq, pageNumber);
-        pages.push(createCharacterPage(pageNumber, currentText.trim(), needsIllustration));
-        logToDebug('Created final page ' + pageNumber + ' with ' + currentText.length + ' characters', 'success');
+    if (currentPageContent.length > 0) {
+        pages.push(createSmartPage(pageNumber, currentPageContent, illustrationFreq));
     }
 
-    logToDebug('Character-based layout complete: ' + pages.length + ' pages created', 'success');
+    logToDebug('Smart paragraph layout complete: ' + pages.length + ' pages created', 'success');
     return pages;
 }
 
-function createCharacterPage(pageNum, content, hasIllustration) {
-    var characterCount = content.length;
-    var images = [];
-    
-    if (hasIllustration) {
-        images.push({
-            type: 'half',
-            id: 'img_' + pageNum + '_1'
-        });
-    }
+function createSmartPage(pageNumber, contentItems, illustrationFreq) {
+    var content = contentItems.map(function(item) { return item.content; }).join('\n\n');
+    var hasHeading = contentItems.some(function(item) { return item.isHeading; });
+    var hasIllustration = shouldHaveIllustration(illustrationFreq, pageNumber);
     
     return {
-        number: pageNum,
+        number: pageNumber,
         content: content,
-        characterCount: characterCount,
-        images: images,
-        hasIllustration: hasIllustration
+        contentItems: contentItems,
+        characterCount: content.length,
+        images: hasIllustration ? [{ type: 'half', id: 'img_' + pageNumber + '_1' }] : [],
+        hasIllustration: hasIllustration,
+        hasHeading: hasHeading,
+        isChapterStart: hasHeading
     };
 }
 
@@ -470,113 +441,191 @@ function shouldHaveIllustration(freq, pageNum) {
 }
 
 // =======================================================================
-// CHARACTER FLOW FUNCTIONS
+// PAGE DIMENSION CALCULATIONS
 // =======================================================================
 
-function scheduleReflow() {
-    if (reflowTimeout) {
-        clearTimeout(reflowTimeout);
-    }
-    reflowTimeout = setTimeout(function() {
-        performReflow();
-    }, 500); // 500ms delay
+function updatePageDimensions() {
+    var dimensions = pageDimensions[currentBookSize];
+    var root = document.documentElement;
+    
+    // Update CSS variables for page dimensions
+    root.style.setProperty('--current-width', dimensions.width + 'in');
+    root.style.setProperty('--current-height', dimensions.height + 'in');
+    root.style.setProperty('--margin-top', pageMargins.top + 'in');
+    root.style.setProperty('--margin-bottom', pageMargins.bottom + 'in');
+    root.style.setProperty('--margin-inside', pageMargins.inside + 'in');
+    root.style.setProperty('--margin-outside', pageMargins.outside + 'in');
+    
+    logToDebug('Page dimensions updated: ' + dimensions.width + 'x' + dimensions.height + ' inches', 'info');
 }
 
-function performReflow() {
+function calculateAvailableTextHeight() {
+    var dimensions = pageDimensions[currentBookSize];
+    var totalHeight = dimensions.height * 96; // Convert inches to pixels (96 DPI)
+    var marginTop = pageMargins.top * 96;
+    var marginBottom = pageMargins.bottom * 96;
+    var headerHeight = 50; // Page header height in pixels
+    var toolbarHeight = 50; // Toolbar height in pixels
+    
+    var availableHeight = totalHeight - marginTop - marginBottom - headerHeight - toolbarHeight;
+    
+    return Math.max(200, availableHeight); // Minimum 200px
+}
+
+function measureParagraphHeight(text) {
+    // Create temporary element to measure actual text height
+    var tempDiv = document.createElement('div');
+    tempDiv.style.cssText = 
+        'position: absolute; top: -9999px; left: -9999px; ' +
+        'width: ' + getTextAreaWidth() + 'px; ' +
+        'font-family: Georgia, serif; ' +
+        'font-size: 12pt; ' +
+        'line-height: 1.4; ' +
+        'white-space: pre-wrap; ' +
+        'word-wrap: break-word;';
+    
+    tempDiv.textContent = text;
+    document.body.appendChild(tempDiv);
+    
+    var height = tempDiv.offsetHeight + 16; // Add some padding between paragraphs
+    document.body.removeChild(tempDiv);
+    
+    return height;
+}
+
+function getTextAreaWidth() {
+    var dimensions = pageDimensions[currentBookSize];
+    var pageWidth = dimensions.width * 96; // Convert to pixels
+    var marginInside = pageMargins.inside * 96;
+    var marginOutside = pageMargins.outside * 96;
+    
+    return pageWidth - marginInside - marginOutside - 40; // Subtract some padding
+}
+
+// =======================================================================
+// SEMI-INDEPENDENCE FLOW SYSTEM
+// =======================================================================
+
+function handleSemiIndependentFlow(pageIndex, newContent) {
+    // This is the core of the semi-independence system
     if (isReflowing) return;
+    
+    logToDebug('Starting semi-independent flow from page ' + (pageIndex + 1), 'flow');
+    
+    // Save state before making changes
+    saveStateToHistory();
+    
     isReflowing = true;
     
-    logToDebug('Starting character-based reflow...', 'flow');
+    // Update current page
+    processedPages[pageIndex].content = newContent;
+    processedPages[pageIndex].characterCount = newContent.length;
     
-    // Show flow indicators
-    var flowIndicators = document.querySelectorAll('.flow-indicator');
-    flowIndicators.forEach(function(indicator) {
-        indicator.classList.add('active');
-    });
-
-    // Collect all text content
-    var allContent = '';
-    for (var i = 0; i < processedPages.length; i++) {
-        if (i > 0) allContent += ' ';
-        allContent += processedPages[i].content;
+    // Check if current page exceeds available height
+    var availableHeight = calculateAvailableTextHeight();
+    var currentHeight = measureParagraphHeight(newContent);
+    
+    // Reduce available height if page has images
+    if (processedPages[pageIndex].images && processedPages[pageIndex].images.length > 0) {
+        availableHeight -= 150 * processedPages[pageIndex].images.length; // Rough image height
     }
-
-    logToDebug('Total content for reflow: ' + allContent.length + ' characters', 'flow');
-
-    // Redistribute content across pages
-    var words = allContent.split(/\s+/).filter(function(word) { return word.length > 0; });
-    var newPages = [];
-    var currentText = '';
-    var pageNumber = 1;
-
-    for (var i = 0; i < words.length; i++) {
-        var word = words[i];
-        var testText = currentText + (currentText ? ' ' : '') + word;
-        var availableChars = getAvailableCharacters(pageNumber);
+    
+    if (currentHeight > availableHeight) {
+        // Page overflows - need to move excess to next page
+        var excess = findExcessContent(newContent, availableHeight);
         
-        if (testText.length > availableChars && currentText.length > 0) {
-            // Create page with current content
-            var hasIllustration = shouldHaveIllustration(
-                getElementValue('illustrationFreq', 'none'), 
-                pageNumber
-            );
-            newPages.push(createCharacterPage(pageNumber, currentText.trim(), hasIllustration));
+        if (excess.overflow) {
+            // Update current page with content that fits
+            processedPages[pageIndex].content = excess.fitting;
+            processedPages[pageIndex].characterCount = excess.fitting.length;
             
-            currentText = word;
-            pageNumber++;
-        } else {
-            currentText = testText;
+            // Flow overflow to next page
+            flowContentToNextPage(pageIndex + 1, excess.overflow);
         }
     }
-
-    // Add final page if there's remaining content
-    if (currentText.trim().length > 0) {
-        var hasIllustration = shouldHaveIllustration(
-            getElementValue('illustrationFreq', 'none'), 
-            pageNumber
-        );
-        newPages.push(createCharacterPage(pageNumber, currentText.trim(), hasIllustration));
-    }
-
-    // Update processed pages
-    processedPages = newPages;
     
-    logToDebug('Reflow complete: ' + newPages.length + ' pages', 'flow');
+    // Re-render affected pages
+    renderFormattedPages(processedPages);
     
-    // Re-render pages
-    if (typeof renderFormattedPages === 'function') {
-        renderFormattedPages(processedPages);
-    }
-    
-    // Update page count
-    updatePageCountDisplay();
-    
-    // Mark as changed
-    if (typeof markAsChanged === 'function') {
-        markAsChanged();
-    }
-    
-    // Hide flow indicators
-    setTimeout(function() {
-        var flowIndicators = document.querySelectorAll('.flow-indicator');
-        flowIndicators.forEach(function(indicator) {
-            indicator.classList.remove('active');
-        });
-        isReflowing = false;
-    }, 1000);
+    isReflowing = false;
+    logToDebug('Semi-independent flow completed', 'flow');
 }
 
-function getAvailableCharacters(pageNumber) {
-    var baseChars = targetCharactersPerPage;
-    var illustrationFreq = getElementValue('illustrationFreq', 'none');
-    var hasIllustration = shouldHaveIllustration(illustrationFreq, pageNumber);
+function findExcessContent(content, availableHeight) {
+    // Find the best break point that fits within available height
+    var words = content.split(' ');
+    var fitting = '';
+    var currentHeight = 0;
+    var lastGoodBreak = 0;
     
-    // Reduce available characters based on image placeholders
-    if (hasIllustration) {
-        baseChars -= 200; // Reserve space for half-page image
+    for (var i = 0; i < words.length; i++) {
+        var testContent = words.slice(0, i + 1).join(' ');
+        var testHeight = measureParagraphHeight(testContent);
+        
+        if (testHeight > availableHeight) {
+            // Find last sentence boundary before overflow
+            var sentenceBreak = findLastSentenceBoundary(words, i);
+            if (sentenceBreak > lastGoodBreak) {
+                lastGoodBreak = sentenceBreak;
+            } else {
+                lastGoodBreak = Math.max(1, i - 1); // At least keep one word
+            }
+            break;
+        }
+        lastGoodBreak = i + 1;
     }
     
-    return baseChars;
+    return {
+        fitting: words.slice(0, lastGoodBreak).join(' '),
+        overflow: words.slice(lastGoodBreak).join(' ')
+    };
+}
+
+function findLastSentenceBoundary(words, maxIndex) {
+    // Look for sentence endings working backwards
+    for (var i = Math.min(maxIndex - 1, words.length - 1); i >= 0; i--) {
+        var word = words[i];
+        if (word.endsWith('.') || word.endsWith('!') || word.endsWith('?')) {
+            return i + 1;
+        }
+    }
+    return maxIndex; // No sentence boundary found
+}
+
+function flowContentToNextPage(pageIndex, overflowContent) {
+    if (!overflowContent || !overflowContent.trim()) return;
+    
+    // Create new page if needed
+    while (pageIndex >= processedPages.length) {
+        var newPage = createSmartPage(processedPages.length + 1, [], 'none');
+        processedPages.push(newPage);
+    }
+    
+    // Add overflow to beginning of next page
+    var nextPage = processedPages[pageIndex];
+    var combinedContent = overflowContent + (nextPage.content ? ' ' + nextPage.content : '');
+    
+    // Check if next page now overflows
+    var nextAvailableHeight = calculateAvailableTextHeight();
+    if (nextPage.images && nextPage.images.length > 0) {
+        nextAvailableHeight -= 150 * nextPage.images.length;
+    }
+    
+    var combinedHeight = measureParagraphHeight(combinedContent);
+    
+    if (combinedHeight > nextAvailableHeight) {
+        // Next page also overflows - cascade the flow
+        var nextExcess = findExcessContent(combinedContent, nextAvailableHeight);
+        nextPage.content = nextExcess.fitting;
+        nextPage.characterCount = nextExcess.fitting.length;
+        
+        // Continue flowing to subsequent pages
+        flowContentToNextPage(pageIndex + 1, nextExcess.overflow);
+    } else {
+        // Next page can accommodate all content
+        nextPage.content = combinedContent;
+        nextPage.characterCount = combinedContent.length;
+    }
 }
 
 // =======================================================================
@@ -592,9 +641,7 @@ function showProgress(show) {
     var progressBar = document.getElementById('progressBar');
     if (progressBar) {
         progressBar.style.display = show ? 'block' : 'none';
-        if (!show) {
-            updateProgress(0);
-        }
+        if (!show) updateProgress(0);
     }
 }
 
@@ -627,41 +674,43 @@ function updatePageCountDisplay() {
     }
 }
 
-function getCharacterCountClass(charCount) {
-    var min = targetCharactersPerPage - 200;  // 1600 for target 1800
-    var max = targetCharactersPerPage + 200;  // 2000 for target 1800
-    var overflow = targetCharactersPerPage + 400; // 2200 for target 1800
+function logToDebug(message, type) {
+    console.log('[DEBUG] ' + message);
     
-    if (charCount >= min && charCount <= max) {
-        return 'optimal';
-    } else if (charCount <= overflow) {
-        return 'warning';
-    } else {
-        return 'overflow';
+    var debugLog = document.getElementById('debugLog');
+    if (debugLog) {
+        var colors = { info: '#00ff00', warn: '#ffaa00', error: '#ff4444', success: '#00aa00', flow: '#00aaff' };
+        var timestamp = new Date().toLocaleTimeString();
+        var color = colors[type] || '#00ff00';
+        debugLog.innerHTML += '<div style="color: ' + color + '; margin-bottom: 3px;">[' + timestamp + '] ' + message + '</div>';
+        debugLog.scrollTop = debugLog.scrollHeight;
     }
 }
 
-// Add error handling for the entire script
+// Debug console functions
+function showDebugConsole() {
+    var debugConsole = document.getElementById('debugConsole');
+    if (!debugConsole) {
+        addDebugConsole();
+    }
+    document.getElementById('debugConsole').style.display = 'block';
+    logToDebug('Debug console opened - Semi-independence flow system active!', 'success');
+}
+
+function addDebugConsole() {
+    var debugDiv = document.createElement('div');
+    debugDiv.id = 'debugConsole';
+    debugDiv.style.cssText = 'position: fixed; bottom: 20px; right: 20px; width: 450px; max-height: 400px; background: #1a1a1a; color: #00ff00; font-family: monospace; font-size: 12px; padding: 15px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); overflow-y: auto; z-index: 1000; display: none; border: 2px solid #333;';
+    
+    debugDiv.innerHTML = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 8px;"><strong style="color: #ffffff; font-size: 14px;">🐛 Debug Console - Semi-Independence Flow v3.0</strong><button onclick="document.getElementById(\'debugConsole\').style.display=\'none\'" style="background: #ff4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">✕ Close</button></div><div id="debugLog" style="max-height: 320px; overflow-y: auto;"></div><div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; font-size: 10px; color: #888;">💡 Real-time semi-independent flow, undo system, and smart paragraph management</div>';
+    
+    document.body.appendChild(debugDiv);
+}
+
+// Global error handling
 window.addEventListener('error', function(e) {
-    console.error('Global error caught:', e.error);
-    logToDebug('Global error: ' + e.message + ' at ' + e.filename + ':' + e.lineno, 'error');
+    console.error('Global error:', e.error);
+    logToDebug('Global error: ' + e.message, 'error');
 });
 
-// Check if all required elements exist on page load
-window.addEventListener('DOMContentLoaded', function() {
-    var requiredElements = ['uploadSection', 'fileInput', 'bookType', 'bookSize', 'illustrationFreq'];
-    var missingElements = [];
-    
-    requiredElements.forEach(function(id) {
-        if (!document.getElementById(id)) {
-            missingElements.push(id);
-        }
-    });
-    
-    if (missingElements.length > 0) {
-        console.error('Missing required elements:', missingElements);
-        logToDebug('Missing elements: ' + missingElements.join(', '), 'error');
-    } else {
-        console.log('All required elements found');
-    }
-});
+console.log('Core.js v3.0 loaded - Semi-Independence Flow System ready');
