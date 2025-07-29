@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Story to Book Layout Generator - Professional Publishing Tool</title>
+    <meta name="description" content="Transform your stories into perfectly formatted book layouts with real-time character flow and professional page dimensions">
+    <meta name="keywords" content="book layout, children's books, publishing, word document, canva, story formatting">
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- GitHub Pages Meta -->
+    <meta property="og:title" content="Story to Book Layout Generator">
+    <meta property="og:description" content="Professional tool for converting stories into perfectly formatted book layouts">
+    <meta property="og:type" content="website">
+</head>
+<body>
+    <div class="container">
+        <!-- Header Section -->
+        <div class="header">
+            <button class="debug-button" onclick="showDebugConsole()" title="Open Debug Console">🐛 Debug</button>
+            <h1>📚 Story to Book Layout Generator</h1>
+            <p>Transform your stories into perfectly formatted book layouts with true page dimensions</p>
+            
+            <!-- GitHub Link -->
+            <div class="github-link">
+                <a href="https://github.com/yourusername/story-to-book-layout" target="_blank" title="View on GitHub">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                    </svg>
+                    GitHub
+                </a>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Upload Section -->
+            <div class="upload-section" id="uploadSection">
+                <h2>📄 Upload Your Story Document</h2>
+                <p>Drag and drop your Word document here, or click to browse</p>
+                <input type="file" id="fileInput" class="file-input" accept=".docx,.doc">
+                <button class="upload-button" onclick="document.getElementById('fileInput').click()">
+                    Choose Document
+                </button>
+                <div id="fileName" class="file-name-display"></div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="progress-bar" id="progressBar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+
+            <!-- Status Message -->
+            <div class="status-message" id="statusMessage"></div>
+
+            <!-- Settings Grid -->
+            <div class="settings-grid">
+                <!-- Book Type -->
+                <div class="setting-group">
+                    <h3>📖 Book Type</h3>
+                    <select id="bookType" class="form-control">
+                        <option value="text">Text-based Book</option>
+                        <option value="illustrated">Text + Illustration Book</option>
+                        <option value="chapter">Chapter Book</option>
+                        <option value="collection">Multi-Author Collection</option>
+                    </select>
+                </div>
+
+                <!-- Book Size -->
+                <div class="setting-group">
+                    <h3>📏 Book Size</h3>
+                    <select id="bookSize" class="form-control">
+                        <option value="standard">Standard (5.5" × 8.5")</option>
+                        <option value="illustration">Illustration (8" × 8")</option>
+                    </select>
+                </div>
+
+                <!-- Page Layout Settings -->
+                <div class="setting-group">
+                    <h3>📐 Page Layout</h3>
+                    <button class="form-control settings-button" onclick="showPageSettings()">
+                        📐 Configure Page Layout
+                    </button>
+                    <small>Margins, fonts, spacing, and print settings</small>
+                </div>
+
+                <!-- Illustration Frequency -->
+                <div class="setting-group">
+                    <h3>🎨 Illustration Frequency</h3>
+                    <select id="illustrationFreq" class="form-control">
+                        <option value="none">No Illustrations</option>
+                        <option value="every">Every Page</option>
+                        <option value="alternate">Every Other Page</option>
+                        <option value="chapter">Per Chapter/Section</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Process Button -->
+            <button class="process-button" id="processButton" onclick="processDocument()">
+                🚀 Generate Book Layout
+            </button>
+
+            <!-- Results Section -->
+            <div class="results-section" id="resultsSection">
+                <h2>📋 Generated Book Layout</h2>
+                
+                <!-- Layout Controls -->
+                <div class="layout-controls">
+                    <button class="control-button" onclick="showPageSettings()">⚙️ Page Settings</button>
+                    <button class="control-button" onclick="togglePreviewMode()">👁️ Preview Mode</button>
+                    <button class="control-button" onclick="showPrintDialog()">🖨️ Print</button>
+                    <span class="page-count" id="pageCountDisplay">0 pages</span>
+                </div>
+                
+                <!-- Pages Container -->
+                <div id="pagesContainer" class="pages-container"></div>
+                
+                <!-- Export Section -->
+                <div class="export-section">
+                    <h3>📤 Export Options</h3>
+                    <button class="export-button" onclick="exportToText()">📄 Export as Text</button>
+                    <button class="export-button" onclick="copyAllPages()">📋 Copy All Pages</button>
+                    <button class="export-button" onclick="generateCanvaInstructions()">🎨 Canva Instructions</button>
+                    <button class="export-button" onclick="generatePDF()">📄 Generate PDF</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page Settings Modal -->
+    <div id="pageSettingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📐 Page Layout Settings</h2>
+                <button class="modal-close" onclick="closePageSettings()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- Book Dimensions -->
+                <div class="settings-section">
+                    <h3>📏 Book Dimensions</h3>
+                    <div class="setting-row">
+                        <label>Book Size:</label>
+                        <select id="modalBookSize" class="modal-control">
+                            <option value="standard">Standard Book (5.5" × 8.5")</option>
+                            <option value="illustration">Illustration Book (8" × 8")</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Margins -->
+                <div class="settings-section">
+                    <h3>📄 Page Margins</h3>
+                    <div class="margins-grid">
+                        <div class="margin-input">
+                            <label>Top:</label>
+                            <input type="text" id="marginTop" value="0.75in" class="modal-control">
+                        </div>
+                        <div class="margin-input">
+                            <label>Bottom:</label>
+                            <input type="text" id="marginBottom" value="0.75in" class="modal-control">
+                        </div>
+                        <div class="margin-input">
+                            <label>Inside:</label>
+                            <input type="text" id="marginInside" value="0.5in" class="modal-control">
+                        </div>
+                        <div class="margin-input">
+                            <label>Outside:</label>
+                            <input type="text" id="marginOutside" value="0.5in" class="modal-control">
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <label>Bleed Area:</label>
+                        <input type="text" id="bleedArea" value="0.125in" class="modal-control">
+                        <small>Extra space around page for printing</small>
+                    </div>
+                </div>
+
+                <!-- Typography -->
+                <div class="settings-section">
+                    <h3>✍️ Typography</h3>
+                    <div class="setting-row">
+                        <label>Font Family:</label>
+                        <select id="fontFamily" class="modal-control">
+                            <option value="Georgia">Georgia</option>
+                            <option value="Times New Roman">Times New Roman</option>
+                            <option value="Arial">Arial</option>
+                        </select>
+                    </div>
+                    <div class="setting-row">
+                        <label>Font Size:</label>
+                        <select id="fontSize" class="modal-control">
+                            <option value="10pt">10pt (Small)</option>
+                            <option value="11pt">11pt (Medium-Small)</option>
+                            <option value="12pt">12pt (Adults)</option>
+                            <option value="13pt">13pt (Medium-Large)</option>
+                            <option value="14pt">14pt (Children)</option>
+                            <option value="16pt">16pt (Large)</option>
+                        </select>
+                    </div>
+                    <div class="setting-row">
+                        <label>Line Spacing:</label>
+                        <select id="lineSpacing" class="modal-control">
+                            <option value="1.2">1.2 (Tight)</option>
+                            <option value="1.4">1.4 (Normal)</option>
+                            <option value="1.5">1.5 (Comfortable)</option>
+                            <option value="1.6">1.6 (Loose)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Page Management -->
+                <div class="settings-section">
+                    <h3>📋 Page Management</h3>
+                    <div class="setting-row">
+                        <label>
+                            <input type="checkbox" id="orphanControl" checked>
+                            Orphan Control (prevent single lines)
+                        </label>
+                    </div>
+                    <div class="setting-row">
+                        <label>
+                            <input type="checkbox" id="chapterBreaks" checked>
+                            Start chapters on new pages
+                        </label>
+                    </div>
+                    <div class="setting-row">
+                        <label>
+                            <input type="checkbox" id="pageNumbers">
+                            Show page numbers
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Presets -->
+                <div class="settings-section">
+                    <h3>🎯 Quick Presets</h3>
+                    <div class="preset-buttons">
+                        <button class="preset-button" onclick="applyPreset('children')">👶 Children's Book</button>
+                        <button class="preset-button" onclick="applyPreset('adult')">📖 Adult Novel</button>
+                        <button class="preset-button" onclick="applyPreset('picture')">🖼️ Picture Book</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button class="modal-button secondary" onclick="resetToDefaults()">🔄 Reset to Defaults</button>
+                <button class="modal-button primary" onclick="applyPageSettings()">✅ Apply Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load JavaScript Files -->
+    <script src="core.js"></script>
+    <script src="project-manager.js"></script>
+    <script src="page-layout.js"></script>
+    <script src="app.js"></script>
+    
+    <!-- GitHub Pages Analytics (Optional) -->
+    <script>
+        // Add your Google Analytics or GitHub Analytics here if needed
+        console.log('Story to Book Layout Generator - GitHub Pages Version');
+    </script>
+</body>
+</html>
