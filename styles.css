@@ -323,7 +323,7 @@ body {
     min-height: 200px;
 }
 
-/* TRUE PAGE DIMENSIONS */
+/* TRUE PAGE DIMENSIONS WITH SEMI-INDEPENDENCE FLOW */
 .page {
     background: white;
     border: 1px solid #ccc;
@@ -331,6 +331,7 @@ body {
     position: relative;
     overflow: hidden;
     margin-bottom: 20px;
+    transition: all 0.3s ease;
     
     /* Default to standard book size */
     width: var(--standard-width);
@@ -353,7 +354,7 @@ body {
     height: var(--illustration-height);
 }
 
-/* Page Header (Editor UI) */
+/* Enhanced Page Header for Semi-Independence */
 .page-header {
     background: var(--primary-gradient);
     color: white;
@@ -367,6 +368,7 @@ body {
     font-size: 0.9em;
     position: relative;
     z-index: 10;
+    border-bottom: 1px solid rgba(255,255,255,0.2);
 }
 
 .page-info {
@@ -383,10 +385,10 @@ body {
     flex-wrap: wrap;
 }
 
-/* Page Content (Actual Text Area) */
+/* Enhanced Page Content with True Dimensions */
 .page-content {
     padding: var(--margin-top) var(--margin-outside) var(--margin-bottom) var(--margin-inside);
-    height: calc(100% - 50px); /* Subtract header height */
+    height: calc(100% - 110px); /* Subtract header + toolbar height */
     overflow: hidden;
     position: relative;
     
@@ -402,6 +404,7 @@ body {
     position: relative;
 }
 
+/* Enhanced Editable Content for Semi-Independence */
 .editable-content {
     min-height: 100%;
     padding: 0;
@@ -411,6 +414,7 @@ body {
     outline: none;
     white-space: pre-wrap;
     word-wrap: break-word;
+    overflow: hidden;
     
     /* Typography inheritance */
     font-family: inherit;
@@ -429,31 +433,51 @@ body {
     box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.1);
 }
 
-/* Character Counter */
-.character-counter {
+/* Current Page Highlighting */
+.page.current-page {
+    border-color: #667eea;
+    box-shadow: 0 8px 24px rgba(102, 126, 234, 0.3);
+    transform: scale(1.005);
+}
+
+/* Height Status Indicators */
+.height-indicator {
     font-size: 0.8em;
     padding: 4px 10px;
     border-radius: 12px;
     font-weight: bold;
     transition: all 0.3s ease;
+    margin-left: 10px;
+    white-space: nowrap;
 }
 
-.character-counter.optimal {
+.height-indicator.optimal {
     background: #d4edda;
     color: #155724;
 }
 
-.character-counter.warning {
+.height-indicator.near-full {
     background: #fff3cd;
     color: #856404;
 }
 
-.character-counter.overflow {
+.height-indicator.overflow {
     background: #f8d7da;
     color: #721c24;
+    animation: pulse-warning 2s infinite;
 }
 
-/* Flow Indicator */
+.height-indicator.empty {
+    background: #e2e3e5;
+    color: #6c757d;
+}
+
+@keyframes pulse-warning {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* Enhanced Flow Indicator */
 .flow-indicator {
     position: absolute;
     top: 60px;
@@ -467,19 +491,26 @@ body {
     transition: opacity 0.3s ease;
     z-index: 20;
     font-weight: bold;
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
 }
 
 .flow-indicator.active {
     opacity: 1;
-    animation: pulse 1.5s infinite;
+    animation: flow-pulse 1.5s infinite;
 }
 
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
+@keyframes flow-pulse {
+    0%, 100% { 
+        opacity: 1; 
+        transform: scale(1);
+    }
+    50% { 
+        opacity: 0.8; 
+        transform: scale(1.05);
+    }
 }
 
-/* Image Placeholders */
+/* Enhanced Image Placeholders */
 .image-placeholder {
     background: linear-gradient(45deg, #f0f2ff, #fff5f5);
     border: 3px dashed #667eea;
@@ -490,20 +521,22 @@ body {
     position: relative;
     cursor: pointer;
     transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
 .image-placeholder:hover {
     border-color: #ff6b6b;
     background: linear-gradient(45deg, #fff5f5, #f0f2ff);
     transform: scale(1.01);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
 .image-placeholder.half-page {
-    height: 2in;
+    height: 150px;
 }
 
 .image-placeholder.full-page {
-    height: 4in;
+    height: 300px;
 }
 
 .image-placeholder .placeholder-text {
@@ -536,6 +569,7 @@ body {
     align-items: center;
     justify-content: center;
     transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
 .image-placeholder .remove-image:hover {
@@ -543,7 +577,7 @@ body {
     transform: scale(1.1);
 }
 
-/* Toolbar */
+/* Enhanced Toolbar */
 .toolbar {
     background: #f8f9fa;
     padding: 12px 20px;
@@ -553,6 +587,7 @@ body {
     align-items: center;
     flex-wrap: wrap;
     font-size: 0.9em;
+    border-top: 1px solid #e0e0e0;
 }
 
 .toolbar-button {
@@ -565,11 +600,13 @@ body {
     font-size: 0.85em;
     font-weight: bold;
     transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .toolbar-button:hover {
     background: #5a67d8;
     transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
 
 .toolbar-button.image-btn {
@@ -589,7 +626,7 @@ body {
     background: #e0a800;
 }
 
-/* Action Buttons */
+/* Enhanced Action Buttons */
 .copy-button {
     background: var(--success-color);
     color: white;
@@ -600,6 +637,7 @@ body {
     font-size: 0.8em;
     font-weight: bold;
     transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .copy-button:hover {
@@ -617,6 +655,7 @@ body {
     font-size: 0.8em;
     font-weight: bold;
     transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .delete-button:hover {
