@@ -1,5 +1,5 @@
 // =======================================================================
-// APP.JS - Main Application & Page Management
+// APP.JS - Main Application & Page Management (FIXED VERSION)
 // Page rendering, editing, image management, and export functions
 // =======================================================================
 
@@ -8,13 +8,22 @@
 // =======================================================================
 
 function renderFormattedPages(pages) {
+    console.log('Rendering', pages.length, 'pages...');
+    logToDebug('Starting to render ' + pages.length + ' pages', 'info');
+    
     var container = document.getElementById('pagesContainer');
+    if (!container) {
+        console.error('Pages container not found!');
+        logToDebug('Error: pagesContainer element not found', 'error');
+        return;
+    }
+    
     container.innerHTML = '';
 
     for (var i = 0; i < pages.length; i++) {
         var page = pages[i];
         var pageDiv = document.createElement('div');
-        pageDiv.className = 'page size-' + currentBookSize;
+        pageDiv.className = 'page size-' + (currentBookSize || 'standard');
         pageDiv.setAttribute('data-page-index', i);
 
         // Flow indicator
@@ -40,7 +49,7 @@ function renderFormattedPages(pages) {
         pageActions.innerHTML = 
             '<button class="copy-button" onclick="copyFormattedPage(' + i + ', \'text\')">Copy Text</button>' +
             '<button class="copy-button" onclick="copyFormattedPage(' + i + ', \'formatted\')">Copy HTML</button>' +
-            (processedPages.length > 1 ? '<button class="delete-button" onclick="deletePage(' + i + ')">Delete</button>' : '');
+            (pages.length > 1 ? '<button class="delete-button" onclick="deletePage(' + i + ')">Delete</button>' : '');
         
         headerDiv.appendChild(pageInfo);
         headerDiv.appendChild(pageActions);
@@ -51,17 +60,20 @@ function renderFormattedPages(pages) {
         toolbar.innerHTML = 
             '<button class="toolbar-button image-btn" onclick="insertImagePlaceholder(' + i + ', \'half\')">📷 Half Image</button>' +
             '<button class="toolbar-button image-btn" onclick="insertImagePlaceholder(' + i + ', \'full\')">🖼️ Full Image</button>' +
-            '<button class="toolbar-button break-btn" onclick="forcePageBreak(' + i + ')">⏎ Force Break</button>';
+            '<button class="toolbar-button break-btn" onclick="forcePageBreak(' + i + ')">⏎ Force Break</button>' +
+            '<button class="toolbar-button" onclick="createNewPageAfter(' + i + ')">📄 New Page</button>';
 
         // Page content
         var contentDiv = document.createElement('div');
         contentDiv.className = 'page-content';
 
         // Render existing images
-        for (var j = 0; j < page.images.length; j++) {
-            var img = page.images[j];
-            var imgPlaceholder = createImageElement(img.type, img.id, i);
-            contentDiv.appendChild(imgPlaceholder);
+        if (page.images && page.images.length > 0) {
+            for (var j = 0; j < page.images.length; j++) {
+                var img = page.images[j];
+                var imgPlaceholder = createImageElement(img.type, img.id, i);
+                contentDiv.appendChild(imgPlaceholder);
+            }
         }
 
         // Editable text content
@@ -69,7 +81,7 @@ function renderFormattedPages(pages) {
         editableDiv.className = 'editable-content';
         editableDiv.contentEditable = true;
         editableDiv.setAttribute('data-page-index', i);
-        editableDiv.textContent = page.content;
+        editableDiv.textContent = page.content || '';
         
         // Add input event listener for real-time character flow
         editableDiv.addEventListener('input', function(e) {
@@ -81,6 +93,16 @@ function renderFormattedPages(pages) {
             currentCursorPage = parseInt(e.target.getAttribute('data-page-index'));
         });
 
+        // Handle Enter key for paragraph creation
+        editableDiv.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                // Let the default behavior happen (creates new line)
+                setTimeout(function() {
+                    handleTextInput({ target: e.target });
+                }, 10);
+            }
+        });
+
         contentDiv.appendChild(editableDiv);
         
         pageDiv.appendChild(flowIndicator);
@@ -89,6 +111,8 @@ function renderFormattedPages(pages) {
         pageDiv.appendChild(contentDiv);
         container.appendChild(pageDiv);
     }
+    
+    logToDebug('Rendered ' + pages.length + ' pages successfully', 'success');
 }
 
 function handleTextInput(event) {
@@ -97,15 +121,22 @@ function handleTextInput(event) {
     var editableDiv = event.target;
     var pageIndex = parseInt(editableDiv.getAttribute('data-page-index'));
     
+    if (isNaN(pageIndex) || pageIndex < 0 || pageIndex >= processedPages.length) {
+        logToDebug('Invalid page index: ' + pageIndex, 'error');
+        return;
+    }
+    
     // Update the page content in our data structure
-    var newContent = editableDiv.textContent || editableDiv.innerText;
+    var newContent = editableDiv.textContent || editableDiv.innerText || '';
     processedPages[pageIndex].content = newContent;
     processedPages[pageIndex].characterCount = newContent.length;
     
     logToDebug('Page ' + (pageIndex + 1) + ' edited: ' + newContent.length + ' characters', 'flow');
     
     // Mark as changed for auto-save
-    markAsChanged();
+    if (typeof markAsChanged === 'function') {
+        markAsChanged();
+    }
     
     // Update character counter display
     updateCharacterCounter(pageIndex);
@@ -115,12 +146,17 @@ function handleTextInput(event) {
 }
 
 function updateCharacterCounter(pageIndex) {
+    if (!processedPages[pageIndex]) return;
+    
     var page = processedPages[pageIndex];
     var headerDiv = document.querySelector('[data-page-index="' + pageIndex + '"] .page-header .page-info');
-    var characterCountClass = getCharacterCountClass(page.characterCount);
-    var characterCountHtml = '<span class="character-counter ' + characterCountClass + '">' + page.characterCount + ' / ' + targetCharactersPerPage + ' chars</span>';
     
-    headerDiv.innerHTML = '<span>Page ' + page.number + '</span>' + characterCountHtml;
+    if (headerDiv) {
+        var characterCountClass = getCharacterCountClass(page.characterCount);
+        var characterCountHtml = '<span class="character-counter ' + characterCountClass + '">' + page.characterCount + ' / ' + targetCharactersPerPage + ' chars</span>';
+        
+        headerDiv.innerHTML = '<span>Page ' + page.number + '</span>' + characterCountHtml;
+    }
 }
 
 // =======================================================================
@@ -160,7 +196,16 @@ function createImageElement(type, id, pageIndex) {
 function insertImagePlaceholder(pageIndex, type) {
     logToDebug('Inserting ' + type + ' image placeholder on page ' + (pageIndex + 1), 'info');
     
+    if (!processedPages[pageIndex]) {
+        logToDebug('Invalid page index for image insertion: ' + pageIndex, 'error');
+        return;
+    }
+    
     var page = processedPages[pageIndex];
+    if (!page.images) {
+        page.images = [];
+    }
+    
     var newImageId = 'img_' + page.number + '_' + (page.images.length + 1);
     
     page.images.push({
@@ -168,23 +213,25 @@ function insertImagePlaceholder(pageIndex, type) {
         id: newImageId
     });
     
-    // Re-render the page
+    // Re-render the specific page
     var pageDiv = document.querySelector('[data-page-index="' + pageIndex + '"]');
-    var contentDiv = pageDiv.querySelector('.page-content');
+    if (pageDiv) {
+        var contentDiv = pageDiv.querySelector('.page-content');
+        var editableDiv = contentDiv.querySelector('.editable-content');
+        var imgElement = createImageElement(type, newImageId, pageIndex);
+        contentDiv.insertBefore(imgElement, editableDiv);
+    }
     
-    // Add the new image placeholder
-    var editableDiv = contentDiv.querySelector('.editable-content');
-    var imgElement = createImageElement(type, newImageId, pageIndex);
-    contentDiv.insertBefore(imgElement, editableDiv);
-    
-    // Update available character space
+    // Update available character space and trigger reflow if needed
     var reservedChars = type === 'half' ? 200 : 400;
-    if (page.content.length > targetCharactersPerPage - reservedChars) {
+    if (page.content && page.content.length > targetCharactersPerPage - reservedChars) {
         scheduleReflow();
     }
     
     // Mark as changed
-    markAsChanged();
+    if (typeof markAsChanged === 'function') {
+        markAsChanged();
+    }
     
     showStatus('Image placeholder added successfully!', 'success');
 }
@@ -192,10 +239,17 @@ function insertImagePlaceholder(pageIndex, type) {
 function removeImagePlaceholder(imageId, pageIndex) {
     logToDebug('Removing image placeholder ' + imageId + ' from page ' + (pageIndex + 1), 'info');
     
+    if (!processedPages[pageIndex]) {
+        logToDebug('Invalid page index for image removal: ' + pageIndex, 'error');
+        return;
+    }
+    
     var page = processedPages[pageIndex];
-    page.images = page.images.filter(function(img) {
-        return img.id !== imageId;
-    });
+    if (page.images) {
+        page.images = page.images.filter(function(img) {
+            return img.id !== imageId;
+        });
+    }
     
     // Remove from DOM
     var imgElement = document.querySelector('[data-image-id="' + imageId + '"]');
@@ -207,7 +261,9 @@ function removeImagePlaceholder(imageId, pageIndex) {
     scheduleReflow();
     
     // Mark as changed
-    markAsChanged();
+    if (typeof markAsChanged === 'function') {
+        markAsChanged();
+    }
     
     showStatus('Image placeholder removed!', 'success');
 }
@@ -219,14 +275,24 @@ function removeImagePlaceholder(imageId, pageIndex) {
 function forcePageBreak(pageIndex) {
     logToDebug('Forcing page break at page ' + (pageIndex + 1), 'info');
     
+    if (!processedPages[pageIndex]) {
+        logToDebug('Invalid page index for page break: ' + pageIndex, 'error');
+        return;
+    }
+    
     // Get cursor position in the editable div
     var editableDiv = document.querySelector('[data-page-index="' + pageIndex + '"] .editable-content');
+    if (!editableDiv) {
+        showStatus('Could not find editable content for page break', 'error');
+        return;
+    }
+    
     var selection = window.getSelection();
     
     if (selection.rangeCount > 0) {
         var range = selection.getRangeAt(0);
         var cursorPos = range.startOffset;
-        var textContent = editableDiv.textContent;
+        var textContent = editableDiv.textContent || '';
         
         // Split content at cursor position
         var beforeCursor = textContent.substring(0, cursorPos);
@@ -236,28 +302,70 @@ function forcePageBreak(pageIndex) {
         processedPages[pageIndex].content = beforeCursor;
         processedPages[pageIndex].characterCount = beforeCursor.length;
         
-        // Create new page with content after cursor
-        var newPageNumber = processedPages.length + 1;
-        var newPage = createCharacterPage(newPageNumber, afterCursor, false);
-        
-        // Insert new page after current page
-        processedPages.splice(pageIndex + 1, 0, newPage);
-        
-        // Renumber pages
-        for (var i = 0; i < processedPages.length; i++) {
-            processedPages[i].number = i + 1;
+        // Create new page with content after cursor if there's content
+        if (afterCursor.trim()) {
+            var newPageNumber = processedPages.length + 1;
+            var newPage = createCharacterPage(newPageNumber, afterCursor.trim(), false);
+            
+            // Insert new page after current page
+            processedPages.splice(pageIndex + 1, 0, newPage);
+            
+            // Renumber pages
+            for (var i = 0; i < processedPages.length; i++) {
+                processedPages[i].number = i + 1;
+            }
+            
+            // Re-render
+            renderFormattedPages(processedPages);
+            
+            showStatus('Page break inserted successfully!', 'success');
+        } else {
+            // Just update the current page
+            updateCharacterCounter(pageIndex);
+            showStatus('Page content updated', 'success');
         }
         
-        // Re-render
-        renderFormattedPages(processedPages);
-        
         // Mark as changed
-        markAsChanged();
+        if (typeof markAsChanged === 'function') {
+            markAsChanged();
+        }
         
-        showStatus('Page break inserted successfully!', 'success');
     } else {
         showStatus('Place cursor where you want to break the page', 'error');
     }
+}
+
+function createNewPageAfter(pageIndex) {
+    logToDebug('Creating new page after index: ' + pageIndex, 'info');
+    
+    var newPageNumber = processedPages.length + 1;
+    var newPage = {
+        number: newPageNumber,
+        content: '',
+        characterCount: 0,
+        images: [],
+        hasIllustration: false,
+        isBlank: true
+    };
+    
+    // Insert new page after specified index
+    processedPages.splice(pageIndex + 1, 0, newPage);
+    
+    // Renumber pages
+    for (var i = 0; i < processedPages.length; i++) {
+        processedPages[i].number = i + 1;
+    }
+    
+    // Re-render pages to show the new page
+    renderFormattedPages(processedPages);
+    
+    // Mark as changed
+    if (typeof markAsChanged === 'function') {
+        markAsChanged();
+    }
+    
+    showStatus('New page created successfully!', 'success');
+    logToDebug('New page created after index ' + pageIndex, 'success');
 }
 
 function deletePage(pageIndex) {
@@ -266,38 +374,52 @@ function deletePage(pageIndex) {
         return;
     }
     
-    if (confirm('Are you sure you want to delete this page? The content will be merged with adjacent pages.')) {
-        logToDebug('Deleting page ' + (pageIndex + 1), 'info');
-        
-        // Merge content with next page if it exists, otherwise with previous page
-        var deletedContent = processedPages[pageIndex].content;
-        
+    if (!confirm('Are you sure you want to delete this page? The content will be merged with adjacent pages.')) {
+        return;
+    }
+    
+    logToDebug('Deleting page ' + (pageIndex + 1), 'info');
+    
+    if (!processedPages[pageIndex]) {
+        logToDebug('Invalid page index for deletion: ' + pageIndex, 'error');
+        return;
+    }
+    
+    // Merge content with adjacent page
+    var deletedContent = processedPages[pageIndex].content || '';
+    
+    if (deletedContent.trim()) {
         if (pageIndex < processedPages.length - 1) {
             // Merge with next page
-            processedPages[pageIndex + 1].content = deletedContent + ' ' + processedPages[pageIndex + 1].content;
+            processedPages[pageIndex + 1].content = deletedContent + ' ' + (processedPages[pageIndex + 1].content || '');
             processedPages[pageIndex + 1].characterCount = processedPages[pageIndex + 1].content.length;
         } else if (pageIndex > 0) {
             // Merge with previous page
-            processedPages[pageIndex - 1].content = processedPages[pageIndex - 1].content + ' ' + deletedContent;
+            processedPages[pageIndex - 1].content = (processedPages[pageIndex - 1].content || '') + ' ' + deletedContent;
             processedPages[pageIndex - 1].characterCount = processedPages[pageIndex - 1].content.length;
         }
-        
-        // Remove the page
-        processedPages.splice(pageIndex, 1);
-        
-        // Renumber pages
-        for (var i = 0; i < processedPages.length; i++) {
-            processedPages[i].number = i + 1;
-        }
-        
-        // Trigger reflow to redistribute content properly
-        scheduleReflow();
-        
-        // Mark as changed
-        markAsChanged();
-        
-        showStatus('Page deleted and content merged successfully!', 'success');
     }
+    
+    // Remove the page
+    processedPages.splice(pageIndex, 1);
+    
+    // Renumber pages
+    for (var i = 0; i < processedPages.length; i++) {
+        processedPages[i].number = i + 1;
+    }
+    
+    // Re-render pages
+    renderFormattedPages(processedPages);
+    
+    // Trigger reflow to redistribute content properly
+    scheduleReflow();
+    
+    // Mark as changed
+    if (typeof markAsChanged === 'function') {
+        markAsChanged();
+    }
+    
+    showStatus('Page deleted and content merged successfully!', 'success');
 }
 
 // =======================================================================
@@ -305,66 +427,128 @@ function deletePage(pageIndex) {
 // =======================================================================
 
 function copyFormattedPage(index, format) {
+    if (!processedPages[index]) {
+        showStatus('Invalid page index for copying', 'error');
+        return;
+    }
+    
     var page = processedPages[index];
     var textToCopy = '';
     
     if (format === 'formatted') {
         textToCopy = convertToCanvaFormat(page);
     } else {
-        textToCopy = page.content;
+        textToCopy = page.content || '';
         
         // Add image placeholders to text
-        for (var i = 0; i < page.images.length; i++) {
-            var img = page.images[i];
-            textToCopy = '[' + img.type.toUpperCase() + ' IMAGE PLACEHOLDER]\n\n' + textToCopy;
+        if (page.images && page.images.length > 0) {
+            var imagePlaceholders = page.images.map(function(img) {
+                return '[' + img.type.toUpperCase() + ' IMAGE PLACEHOLDER]';
+            }).join('\n');
+            textToCopy = imagePlaceholders + '\n\n' + textToCopy;
         }
     }
 
-    navigator.clipboard.writeText(textToCopy).then(function() {
-        showStatus('Page copied to clipboard (' + format + ' format)!', 'success');
-    });
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(textToCopy).then(function() {
+            showStatus('Page copied to clipboard (' + format + ' format)!', 'success');
+        }).catch(function(err) {
+            console.error('Copy failed:', err);
+            showStatus('Copy failed. Please try again.', 'error');
+        });
+    } else {
+        // Fallback for older browsers
+        var textArea = document.createElement('textarea');
+        textArea.value = textToCopy;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            showStatus('Page copied to clipboard (' + format + ' format)!', 'success');
+        } catch (err) {
+            showStatus('Copy failed. Please copy manually.', 'error');
+        }
+        document.body.removeChild(textArea);
+    }
 }
 
 function convertToCanvaFormat(page) {
     var canvaText = '';
     
     // Add image placeholders
-    for (var i = 0; i < page.images.length; i++) {
-        var img = page.images[i];
-        canvaText += '[ADD ' + img.type.toUpperCase() + ' IMAGE HERE]\n\n';
+    if (page.images && page.images.length > 0) {
+        for (var i = 0; i < page.images.length; i++) {
+            var img = page.images[i];
+            canvaText += '[ADD ' + img.type.toUpperCase() + ' IMAGE HERE]\n\n';
+        }
     }
     
-    canvaText += page.content;
+    canvaText += page.content || '';
     
     return canvaText;
 }
 
 function copyAllPages() {
+    if (!processedPages || processedPages.length === 0) {
+        showStatus('No pages to copy', 'error');
+        return;
+    }
+    
     var allText = '';
     for (var i = 0; i < processedPages.length; i++) {
+        allText += 'PAGE ' + (i + 1) + ':\n';
         allText += convertToCanvaFormat(processedPages[i]) + '\n---\n\n';
     }
-    navigator.clipboard.writeText(allText).then(function() {
-        showStatus('All pages copied to clipboard (Canva format)!', 'success');
-    });
+    
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(allText).then(function() {
+            showStatus('All pages copied to clipboard (Canva format)!', 'success');
+        }).catch(function(err) {
+            console.error('Copy all failed:', err);
+            showStatus('Copy failed. Please try again.', 'error');
+        });
+    } else {
+        // Fallback for older browsers
+        var textArea = document.createElement('textarea');
+        textArea.value = allText;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            showStatus('All pages copied to clipboard (Canva format)!', 'success');
+        } catch (err) {
+            showStatus('Copy failed. Please copy manually.', 'error');
+        }
+        document.body.removeChild(textArea);
+    }
 }
 
 function exportToText() {
-    var content = 'Book Layout Export (Character-Based Flow v2.0)\nGenerated: ' + new Date().toLocaleDateString() + '\nTotal Pages: ' + processedPages.length + '\nCharacters per page: ' + targetCharactersPerPage + '\n\n';
+    if (!processedPages || processedPages.length === 0) {
+        showStatus('No pages to export', 'error');
+        return;
+    }
+    
+    var content = 'Book Layout Export (Character-Based Flow v2.0)\n';
+    content += 'Generated: ' + new Date().toLocaleDateString() + '\n';
+    content += 'Total Pages: ' + processedPages.length + '\n';
+    content += 'Characters per page: ' + targetCharactersPerPage + '\n\n';
     content += '==================================================\n\n';
 
     for (var i = 0; i < processedPages.length; i++) {
         var page = processedPages[i];
-        content += 'PAGE ' + page.number + ' (' + page.characterCount + ' characters)\n';
+        content += 'PAGE ' + page.number + ' (' + (page.characterCount || 0) + ' characters)\n';
         content += '==================================================\n';
         
         // Add image placeholders
-        for (var j = 0; j < page.images.length; j++) {
-            var img = page.images[j];
-            content += '[' + img.type.toUpperCase() + ' IMAGE PLACEHOLDER - ' + img.id + ']\n\n';
+        if (page.images && page.images.length > 0) {
+            for (var j = 0; j < page.images.length; j++) {
+                var img = page.images[j];
+                content += '[' + img.type.toUpperCase() + ' IMAGE PLACEHOLDER - ' + img.id + ']\n\n';
+            }
         }
         
-        content += page.content + '\n\n';
+        content += (page.content || '') + '\n\n';
         
         if (i < processedPages.length - 1) {
             content += '==================================================\n\n';
@@ -378,16 +562,23 @@ function exportToText() {
     a.download = 'book-layout-character-based-v2.txt';
     a.click();
     URL.revokeObjectURL(url);
+    
+    showStatus('Text file exported successfully!', 'success');
 }
 
 function generateCanvaInstructions() {
+    if (!processedPages || processedPages.length === 0) {
+        showStatus('No pages to generate instructions for', 'error');
+        return;
+    }
+    
     var instructions = 'Canva Book Layout Instructions (Character-Based Flow v2.0)\n';
     instructions += '==================================================\n\n';
     instructions += 'Book Details:\n';
     instructions += '- Total Pages: ' + processedPages.length + '\n';
-    instructions += '- Book Type: ' + document.getElementById('bookType').value + '\n';
-    instructions += '- Book Size: ' + document.getElementById('bookSize').value + '\n';
-    instructions += '- Characters per Page: ' + document.getElementById('charactersPerPage').value + '\n';
+    instructions += '- Book Type: ' + getElementValue('bookType', 'text') + '\n';
+    instructions += '- Book Size: ' + getElementValue('bookSize', 'standard') + '\n';
+    instructions += '- Characters per Page: ' + getElementValue('charactersPerPage', '1800') + '\n';
     instructions += '- Layout System: Character-based flow with real-time editing v2.0\n';
     instructions += '- Project Management: Auto-save enabled with project history\n\n';
     
@@ -411,10 +602,10 @@ function generateCanvaInstructions() {
 
     for (var i = 0; i < processedPages.length; i++) {
         var page = processedPages[i];
-        instructions += 'PAGE ' + page.number + ' (' + page.characterCount + ' characters):\n\n';
+        instructions += 'PAGE ' + page.number + ' (' + (page.characterCount || 0) + ' characters):\n\n';
         
         // Add image instructions
-        if (page.images.length > 0) {
+        if (page.images && page.images.length > 0) {
             instructions += 'IMAGES TO ADD:\n';
             for (var j = 0; j < page.images.length; j++) {
                 var img = page.images[j];
@@ -424,7 +615,7 @@ function generateCanvaInstructions() {
         }
         
         instructions += 'TEXT CONTENT:\n';
-        instructions += page.content + '\n\n';
+        instructions += (page.content || '') + '\n\n';
         
         var separator = '';
         for (var k = 0; k < 50; k++) {
@@ -440,25 +631,102 @@ function generateCanvaInstructions() {
     a.download = 'canva-instructions-character-flow-v2.txt';
     a.click();
     URL.revokeObjectURL(url);
+    
+    showStatus('Canva instructions generated successfully!', 'success');
 }
 
 function generatePDF() {
-    showStatus('PDF generation will be enhanced in Phase 3. Currently using browser print...', 'success');
+    showStatus('Opening print dialog for PDF generation...', 'success');
     
-    // For now, use browser print - this will be enhanced in Phase 3
+    // Apply print-friendly styles temporarily
+    document.body.classList.add('print-ready');
+    
+    // Open browser print dialog after a short delay
     setTimeout(function() {
         window.print();
+        document.body.classList.remove('print-ready');
     }, 1000);
 }
 
 // =======================================================================
-// INITIALIZATION COMPLETE
+// PREVIEW MODE FUNCTIONS
 // =======================================================================
 
+function togglePreviewMode() {
+    var pagesContainer = document.getElementById('pagesContainer');
+    if (!pagesContainer) {
+        showStatus('Pages container not found', 'error');
+        return;
+    }
+    
+    var isPreview = pagesContainer.classList.contains('preview-mode');
+    
+    if (isPreview) {
+        pagesContainer.classList.remove('preview-mode');
+        showStatus('Edit mode enabled', 'success');
+        logToDebug('Switched to edit mode', 'info');
+    } else {
+        pagesContainer.classList.add('preview-mode');
+        showStatus('Preview mode enabled - Hide editing controls', 'success');
+        logToDebug('Switched to preview mode', 'info');
+        
+        // Add preview mode styles if not already added
+        if (!document.getElementById('previewStyles')) {
+            var style = document.createElement('style');
+            style.id = 'previewStyles';
+            style.textContent = `
+                .preview-mode .page-header,
+                .preview-mode .toolbar {
+                    display: none !important;
+                }
+                .preview-mode .page {
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+                    margin-bottom: 40px;
+                }
+                .preview-mode .editable-content {
+                    border: none !important;
+                    background: transparent !important;
+                    cursor: default;
+                }
+                .preview-mode .editable-content:hover,
+                .preview-mode .editable-content:focus {
+                    border: none !important;
+                    background: transparent !important;
+                    box-shadow: none !important;
+                }
+                .preview-mode .flow-indicator {
+                    display: none !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+}
+
+// =======================================================================
+// INITIALIZATION AND ERROR HANDLING
+// =======================================================================
+
+// Make sure functions are available globally
+window.renderFormattedPages = renderFormattedPages;
+window.copyFormattedPage = copyFormattedPage;
+window.copyAllPages = copyAllPages;
+window.exportToText = exportToText;
+window.generateCanvaInstructions = generateCanvaInstructions;
+window.generatePDF = generatePDF;
+window.insertImagePlaceholder = insertImagePlaceholder;
+window.removeImagePlaceholder = removeImagePlaceholder;
+window.forcePageBreak = forcePageBreak;
+window.deletePage = deletePage;
+window.createNewPageAfter = createNewPageAfter;
+window.togglePreviewMode = togglePreviewMode;
+
 // Log successful initialization
+console.log('App.js loaded successfully - Page rendering functions available');
+
 if (typeof logToDebug === 'function') {
     setTimeout(function() {
-        logToDebug('All modules loaded successfully - App ready!', 'success');
-        logToDebug('Features: Character flow, Auto-save, Project management, Image placeholders', 'info');
-    }, 100);
+        logToDebug('App.js module loaded successfully', 'success');
+        logToDebug('All page rendering and interaction functions initialized', 'info');
+    }, 200);
 }
