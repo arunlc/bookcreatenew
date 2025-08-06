@@ -1,6 +1,7 @@
 // =======================================================================
-// PROJECT-MANAGER.JS - Project Management & Auto-save System
+// PROJECT-MANAGER.JS - Project Management & Auto-save System (FIXED)
 // Handles project saving, loading, auto-save, and recovery functionality
+// Fixed: Duplicate UI issue
 // =======================================================================
 
 // Project management variables
@@ -15,33 +16,69 @@ var projectSettings = {
     illustrationFreq: 'none'
 };
 
+// Global flags to prevent duplicates
+var projectUIInitialized = false;
+var autoSaveStarted = false;
+var unloadHandlerSet = false;
+
 // =======================================================================
-// INITIALIZATION FUNCTIONS
+// INITIALIZATION FUNCTIONS (FIXED)
 // =======================================================================
 
 function initializeProjectManagement() {
     logToDebug('Initializing project management system...', 'save');
     
+    // Only initialize once
+    if (projectUIInitialized) {
+        logToDebug('Project management already initialized', 'info');
+        return;
+    }
+    
+    // Clean up any existing duplicates first
+    cleanupDuplicateUI();
+    
     // Add project management UI
     addProjectManagementUI();
     
-    // Start auto-save timer
-    startAutoSave();
+    // Start auto-save timer (only if not already started)
+    if (!autoSaveStarted) {
+        startAutoSave();
+    }
     
-    // Set up beforeunload handler
-    window.addEventListener('beforeunload', function(e) {
-        if (hasUnsavedChanges) {
-            var message = 'You have unsaved changes. Are you sure you want to leave?';
-            e.returnValue = message;
-            return message;
-        }
-    });
+    // Set up beforeunload handler (prevent duplicates)
+    if (!unloadHandlerSet) {
+        window.addEventListener('beforeunload', function(e) {
+            if (hasUnsavedChanges) {
+                var message = 'You have unsaved changes. Are you sure you want to leave?';
+                e.returnValue = message;
+                return message;
+            }
+        });
+        unloadHandlerSet = true;
+    }
     
-    logToDebug('Project management initialized', 'success');
+    logToDebug('Project management initialized successfully', 'success');
 }
 
 function addProjectManagementUI() {
+    // Prevent duplicate UI creation
+    if (projectUIInitialized) {
+        logToDebug('Project UI already initialized, skipping duplicate creation', 'warning');
+        return;
+    }
+    
+    // Check if project bar already exists
+    var existingProjectBar = document.getElementById('projectBar');
+    if (existingProjectBar) {
+        logToDebug('Project bar already exists, removing duplicate', 'warning');
+        existingProjectBar.remove();
+    }
+    
     var header = document.querySelector('.header');
+    if (!header) {
+        logToDebug('Header not found, cannot add project UI', 'error');
+        return;
+    }
     
     // Create project management bar
     var projectBar = document.createElement('div');
@@ -76,12 +113,42 @@ function addProjectManagementUI() {
     projectBar.appendChild(projectActions);
     header.appendChild(projectBar);
     
-    // Project name input handler
-    document.getElementById('projectNameInput').addEventListener('input', function(e) {
-        currentProjectName = e.target.value || 'Untitled Book Project';
-        updateProjectDisplay();
+    // Set up event listeners
+    var projectNameInput = document.getElementById('projectNameInput');
+    if (projectNameInput) {
+        // Remove existing listeners to prevent duplicates
+        projectNameInput.removeEventListener('input', handleProjectNameChange);
+        projectNameInput.addEventListener('input', handleProjectNameChange);
+    }
+    
+    // Mark as initialized
+    projectUIInitialized = true;
+    logToDebug('Project management UI created successfully', 'success');
+}
+
+// Separate function for project name change handling
+function handleProjectNameChange(e) {
+    currentProjectName = e.target.value || 'Untitled Book Project';
+    updateProjectDisplay();
+    if (typeof markAsChanged === 'function') {
         markAsChanged();
-    });
+    }
+}
+
+function cleanupDuplicateUI() {
+    // Find all project bars
+    var projectBars = document.querySelectorAll('#projectBar');
+    
+    // Remove all but the first one
+    for (var i = 1; i < projectBars.length; i++) {
+        logToDebug('Removing duplicate project bar', 'info');
+        projectBars[i].remove();
+    }
+    
+    // Reset initialization flag if no bars exist
+    if (document.querySelectorAll('#projectBar').length === 0) {
+        projectUIInitialized = false;
+    }
 }
 
 function checkForRecoveryData() {
@@ -156,17 +223,24 @@ function showRecoveryDialog(recoveryData) {
 }
 
 // =======================================================================
-// AUTO-SAVE FUNCTIONS
+// AUTO-SAVE FUNCTIONS (FIXED)
 // =======================================================================
 
 function startAutoSave() {
+    // Prevent multiple auto-save intervals
+    if (autoSaveStarted) {
+        logToDebug('Auto-save already started', 'info');
+        return;
+    }
+    
     // Auto-save every 30 seconds
     autoSaveInterval = setInterval(function() {
-        if (hasUnsavedChanges && processedPages.length > 0) {
+        if (hasUnsavedChanges && processedPages && processedPages.length > 0) {
             autoSaveToLocal();
         }
     }, 30000); // 30 seconds
     
+    autoSaveStarted = true;
     logToDebug('Auto-save started (30 second intervals)', 'save');
 }
 
@@ -217,13 +291,13 @@ function getCurrentProjectData() {
         timestamp: Date.now(),
         version: '2.0',
         settings: {
-            bookType: document.getElementById('bookType').value,
-            bookSize: document.getElementById('bookSize').value,
-            charactersPerPage: parseInt(document.getElementById('charactersPerPage').value),
-            illustrationFreq: document.getElementById('illustrationFreq').value
+            bookType: document.getElementById('bookType') ? document.getElementById('bookType').value : 'text',
+            bookSize: document.getElementById('bookSize') ? document.getElementById('bookSize').value : 'standard',
+            charactersPerPage: document.getElementById('charactersPerPage') ? parseInt(document.getElementById('charactersPerPage').value) : 1800,
+            illustrationFreq: document.getElementById('illustrationFreq') ? document.getElementById('illustrationFreq').value : 'none'
         },
-        documentStructure: documentStructure,
-        pages: processedPages.map(function(page) {
+        documentStructure: typeof documentStructure !== 'undefined' ? documentStructure : [],
+        pages: typeof processedPages !== 'undefined' ? processedPages.map(function(page) {
             return {
                 number: page.number,
                 content: page.content,
@@ -231,12 +305,12 @@ function getCurrentProjectData() {
                 images: page.images || [],
                 hasIllustration: page.hasIllustration || false
             };
-        }),
+        }) : [],
         metadata: {
-            totalPages: processedPages.length,
-            totalCharacters: processedPages.reduce(function(total, page) {
+            totalPages: typeof processedPages !== 'undefined' ? processedPages.length : 0,
+            totalCharacters: typeof processedPages !== 'undefined' ? processedPages.reduce(function(total, page) {
                 return total + page.characterCount;
-            }, 0),
+            }, 0) : 0,
             createdDate: lastSaveTime || Date.now(),
             lastModified: Date.now()
         }
@@ -318,43 +392,66 @@ function loadProjectData(projectData) {
     
     // Load project settings
     currentProjectName = projectData.projectName || 'Loaded Project';
-    document.getElementById('projectNameInput').value = currentProjectName;
+    var projectNameInput = document.getElementById('projectNameInput');
+    if (projectNameInput) {
+        projectNameInput.value = currentProjectName;
+    }
     
     if (projectData.settings) {
-        document.getElementById('bookType').value = projectData.settings.bookType || 'text';
-        document.getElementById('bookSize').value = projectData.settings.bookSize || 'standard';
-        document.getElementById('charactersPerPage').value = projectData.settings.charactersPerPage || 1800;
-        document.getElementById('illustrationFreq').value = projectData.settings.illustrationFreq || 'none';
+        if (document.getElementById('bookType')) {
+            document.getElementById('bookType').value = projectData.settings.bookType || 'text';
+        }
+        if (document.getElementById('bookSize')) {
+            document.getElementById('bookSize').value = projectData.settings.bookSize || 'standard';
+        }
+        if (document.getElementById('charactersPerPage')) {
+            document.getElementById('charactersPerPage').value = projectData.settings.charactersPerPage || 1800;
+        }
+        if (document.getElementById('illustrationFreq')) {
+            document.getElementById('illustrationFreq').value = projectData.settings.illustrationFreq || 'none';
+        }
         
-        targetCharactersPerPage = projectData.settings.charactersPerPage || 1800;
-        currentBookSize = projectData.settings.bookSize || 'standard';
+        if (typeof targetCharactersPerPage !== 'undefined') {
+            targetCharactersPerPage = projectData.settings.charactersPerPage || 1800;
+        }
+        if (typeof currentBookSize !== 'undefined') {
+            currentBookSize = projectData.settings.bookSize || 'standard';
+        }
     }
     
     // Load document structure if available
-    if (projectData.documentStructure) {
+    if (projectData.documentStructure && typeof documentStructure !== 'undefined') {
         documentStructure = projectData.documentStructure;
     }
     
     // Load pages
-    processedPages = projectData.pages.map(function(pageData, index) {
-        return {
-            number: index + 1,
-            content: pageData.content || '',
-            characterCount: pageData.characterCount || pageData.content.length || 0,
-            images: pageData.images || [],
-            hasIllustration: pageData.hasIllustration || false
-        };
-    });
+    if (typeof processedPages !== 'undefined') {
+        processedPages = projectData.pages.map(function(pageData, index) {
+            return {
+                number: index + 1,
+                content: pageData.content || '',
+                characterCount: pageData.characterCount || pageData.content.length || 0,
+                images: pageData.images || [],
+                hasIllustration: pageData.hasIllustration || false
+            };
+        });
+    }
     
     // Show results section and render pages
-    document.getElementById('resultsSection').style.display = 'block';
-    renderFormattedPages(processedPages);
+    var resultsSection = document.getElementById('resultsSection');
+    if (resultsSection) {
+        resultsSection.style.display = 'block';
+    }
+    
+    if (typeof renderFormattedPages === 'function' && typeof processedPages !== 'undefined') {
+        renderFormattedPages(processedPages);
+    }
     
     // Update UI
     updateProjectDisplay();
     markAsSaved();
     
-    logToDebug('Project data loaded successfully - ' + processedPages.length + ' pages', 'save');
+    logToDebug('Project data loaded successfully - ' + (typeof processedPages !== 'undefined' ? processedPages.length : 0) + ' pages', 'save');
 }
 
 function newProject() {
@@ -366,25 +463,48 @@ function newProject() {
     
     // Reset all data
     currentProjectName = 'Untitled Book Project';
-    documentText = '';
-    documentHTML = '';
-    documentStructure = [];
-    processedPages = [];
+    if (typeof documentText !== 'undefined') documentText = '';
+    if (typeof documentHTML !== 'undefined') documentHTML = '';
+    if (typeof documentStructure !== 'undefined') documentStructure = [];
+    if (typeof processedPages !== 'undefined') processedPages = [];
     hasUnsavedChanges = false;
     
     // Reset UI
-    document.getElementById('projectNameInput').value = currentProjectName;
-    document.getElementById('fileName').innerHTML = '';
-    document.getElementById('resultsSection').style.display = 'none';
+    var projectNameInput = document.getElementById('projectNameInput');
+    if (projectNameInput) {
+        projectNameInput.value = currentProjectName;
+    }
+    
+    var fileName = document.getElementById('fileName');
+    if (fileName) {
+        fileName.innerHTML = '';
+    }
+    
+    var resultsSection = document.getElementById('resultsSection');
+    if (resultsSection) {
+        resultsSection.style.display = 'none';
+    }
     
     // Reset settings to defaults
-    document.getElementById('bookType').value = 'text';
-    document.getElementById('bookSize').value = 'standard';
-    document.getElementById('charactersPerPage').value = '1800';
-    document.getElementById('illustrationFreq').value = 'none';
+    if (document.getElementById('bookType')) {
+        document.getElementById('bookType').value = 'text';
+    }
+    if (document.getElementById('bookSize')) {
+        document.getElementById('bookSize').value = 'standard';
+    }
+    if (document.getElementById('charactersPerPage')) {
+        document.getElementById('charactersPerPage').value = '1800';
+    }
+    if (document.getElementById('illustrationFreq')) {
+        document.getElementById('illustrationFreq').value = 'none';
+    }
     
-    targetCharactersPerPage = 1800;
-    currentBookSize = 'standard';
+    if (typeof targetCharactersPerPage !== 'undefined') {
+        targetCharactersPerPage = 1800;
+    }
+    if (typeof currentBookSize !== 'undefined') {
+        currentBookSize = 'standard';
+    }
     
     updateProjectDisplay();
     updateSaveStatus('Ready');
@@ -521,4 +641,23 @@ function showProjectHistory() {
         showStatus('Error loading project history: ' + err.message, 'error');
         logToDebug('History error: ' + err.message, 'error');
     }
+}
+
+// =======================================================================
+// INITIALIZATION ON PAGE LOAD (FIXED)
+// =======================================================================
+
+// Call cleanup on page load to fix existing duplicates
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(function() {
+            cleanupDuplicateUI();
+            // Don't auto-initialize here - let app-main.js handle it
+        }, 100);
+    });
+} else {
+    setTimeout(function() {
+        cleanupDuplicateUI();
+        // Don't auto-initialize here - let app-main.js handle it
+    }, 100);
 }
